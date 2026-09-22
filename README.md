@@ -239,6 +239,27 @@ local workerはHTTP portを開きません。Go processがPython workerを直接
 
 Laya-MLXは100属性すべてを採点するdense backendとして扱います。LayaにはJevの`applicable / unknown / not_applicable`と同等の判定契約がないため、adapterが返却scoreを既存のJev互換形式へラップします。scoreのentropy confidenceは変更せず保存され、local modelが不確かな属性はhybrid rankingで弱く扱われます。cloud Jev backendは従来どおり3状態を明示的に評価します。
 
+### 既存gmem-memoryへの一括付与
+
+旧形式の`## 場面`、`## 決定内容`、`## 選択肢`、`## 決定基準・理由`をDecision frameへ変換し、元のMarkdownを保ったままFingerprint blockを追加できます。
+
+```bash
+jev-mem backfill-fingerprints \
+  --repo "$HOME/Library/Application Support/jev-mem/repo" \
+  --local \
+  --commit \
+  --push \
+  --output json
+```
+
+進捗はJSON出力を壊さないようstderrへ1件ずつ表示されます。
+
+```text
+[42/824  5.1%] updated=42 skipped=0 failed=0 elapsed=9m12s eta=2h51m file=projects/.../decision.md
+```
+
+表示項目は処理数、全件数、成功、既存Fingerprintのskip、失敗、経過時間、ETA、現在のファイルです。処理中断時も書き込み済みFingerprintは残ります。内容を確認後、`--resume --commit --push`で再開すると既処理ファイルをskipします。最初は`--limit 3 --dry-run`で実データを変更せず確認できます。
+
 ## Quick start: Decisionを保存する
 
 最初は`dry_run: true`で入力、security check、fingerprint評価、embedding生成まで確認できます。cloud backendではdry-runでもJev APIを呼び出しますが、ファイル作成、Git commit、push、index更新は行いません。local backendでは`--local`を付けてください。
@@ -303,6 +324,21 @@ jev-mem search-analogies --input json --output json <<'JSON' > search-result.jso
 }
 JSON
 ```
+
+### 10×10 HTML report
+
+`search-analogies`へ`--html-report`を指定すると、通常のJSON結果に加えてself-contained HTMLを生成します。queryと各検索結果の100属性を同じ10×10配置で、combined similarity順に表示します。
+
+```bash
+jev-mem search-analogies \
+  --local \
+  --input json \
+  --output json \
+  --html-report ./decision-report.html \
+  < query.json > search-result.json
+```
+
+各resultにはcombined / fingerprint / confidence-adjusted fingerprint / semantic score、近い属性、異なる属性、Decision本文を表示します。セルへpointerを合わせると属性番号、名称、ID、値を確認できます。HTML上のマップは可視化であり、検索計算は保存された属性値に対して行われます。
 
 `all: true`は全projectを横断します。特定projectだけを検索する場合は、`all`を省略して`current_workspace_path`を渡します。
 

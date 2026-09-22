@@ -324,6 +324,7 @@ func (i *Index) SearchAnalogies(ctx context.Context, queryEmbedding []float32, q
 					result.AdjustedFingerprintScore = adjusted
 					result.CombinedScore += fingerprintWeight * adjusted
 					result.FingerprintSimilarity = &similarity
+					result.Fingerprint = &candidate
 				}
 			}
 		}

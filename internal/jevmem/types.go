@@ -153,6 +153,7 @@ type AnalogSearchResult struct {
 	AdjustedFingerprintScore float64                `json:"adjusted_fingerprint_score,omitempty"`
 	CombinedScore            float64                `json:"combined_score"`
 	FingerprintSimilarity    *FingerprintSimilarity `json:"fingerprint_similarity,omitempty"`
+	Fingerprint              *Fingerprint           `json:"fingerprint,omitempty"`
 }
 
 type AnalogSearchData struct {

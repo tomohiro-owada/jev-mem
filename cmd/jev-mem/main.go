@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tomohiro-owada/jev-mem/internal/jevmem"
 )
@@ -45,6 +47,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runJevCheck(args[1:], stdout)
 	case "local-setup":
 		return runLocalSetup(args[1:], stdout)
+	case "backfill-fingerprints":
+		return runBackfillFingerprints(args[1:], stdout)
 	case "fingerprint":
 		return runFingerprint(args[1:], stdin, stdout)
 	case "heatmap":
@@ -128,7 +132,12 @@ func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
 	if evaluatorCleanup != nil {
 		defer evaluatorCleanup.Close()
 	}
-	extractor := &jevmem.JevFingerprintExtractor{Evaluator: evaluator, BatchSize: 25}
+	extractorBatchSize := 25
+	if local, ok := evaluator.(*jevmem.LocalLayaEvaluator); ok {
+		extractorBatchSize = 100
+		local.BatchSize = atoiDefault(opts["laya-batch-size"], 64)
+	}
+	extractor := &jevmem.JevFingerprintExtractor{Evaluator: evaluator, BatchSize: extractorBatchSize}
 	fingerprint, err := extractor.Extract(context.Background(), decision)
 	if err != nil {
 		return err
@@ -193,6 +202,102 @@ func runLocalSetup(args []string, stdout io.Writer) error {
 		return err
 	}
 	return writeResponse(stdout, opts["output"], jevmem.OK(result))
+}
+
+func runBackfillFingerprints(args []string, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	repoDir := strings.TrimSpace(opts["repo"])
+	remoteURL := strings.TrimSpace(opts["remote"])
+	if repoDir == "" {
+		cfg, err := jevmem.LoadConfig("")
+		if err != nil {
+			return err
+		}
+		repoDir, remoteURL = cfg.GitDir, cfg.RemoteURL
+	}
+	if repoDir == "" {
+		return fmt.Errorf("--repo is required when git_dir is not configured")
+	}
+	repoDir, err = filepath.Abs(repoDir)
+	if err != nil {
+		return err
+	}
+	repo := jevmem.GitRepo{Dir: repoDir, RemoteURL: remoteURL}
+	if err := repo.Ensure(context.Background()); err != nil {
+		return err
+	}
+	dirty, err := repo.Dirty(context.Background())
+	if err != nil {
+		return err
+	}
+	if dirty && opts["resume"] != "true" {
+		return fmt.Errorf("repository has uncommitted changes; inspect them and rerun with --resume only if they are an interrupted fingerprint backfill")
+	}
+	if !dirty {
+		if err := repo.PullRebase(context.Background()); err != nil {
+			return err
+		}
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	evaluator, evaluatorCleanup, err := jevmem.NewJevEvaluatorFromEnvironment(workDir, fingerprintBackendOption(opts))
+	if err != nil {
+		return err
+	}
+	if evaluatorCleanup != nil {
+		defer evaluatorCleanup.Close()
+	}
+	extractorBatchSize := 25
+	if local, ok := evaluator.(*jevmem.LocalLayaEvaluator); ok {
+		extractorBatchSize = 100
+		local.BatchSize = atoiDefault(opts["laya-batch-size"], 64)
+	}
+	extractor := &jevmem.JevFingerprintExtractor{Evaluator: evaluator, BatchSize: extractorBatchSize}
+	result, err := jevmem.BackfillLegacyFingerprints(context.Background(), extractor, jevmem.BackfillOptions{
+		RepoDir: repoDir,
+		Limit:   atoiDefault(opts["limit"], 0),
+		DryRun:  opts["dry-run"] == "true",
+	}, func(progress jevmem.BackfillProgress) {
+		percent := float64(0)
+		if progress.Total > 0 {
+			percent = 100 * float64(progress.Processed) / float64(progress.Total)
+		}
+		fmt.Fprintf(os.Stderr, "[%d/%d %5.1f%%] updated=%d skipped=%d failed=%d elapsed=%s eta=%s file=%s\n",
+			progress.Processed, progress.Total, percent, progress.Updated, progress.Skipped, progress.Failed,
+			shortDuration(progress.Elapsed), shortDuration(progress.ETA), progress.Path)
+		if progress.Error != "" {
+			fmt.Fprintf(os.Stderr, "  error: %s\n", progress.Error)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	if !result.DryRun && result.Updated > 0 && opts["commit"] == "true" {
+		commit, err := repo.AddCommit(context.Background(), ".", fmt.Sprintf("Add decision fingerprints to %d memories", result.Updated))
+		if err != nil {
+			return err
+		}
+		result.CommitHash = commit
+		if opts["push"] == "true" {
+			if err := repo.Push(context.Background()); err != nil {
+				return fmt.Errorf("fingerprints were committed locally as %s but push failed: %w", commit, err)
+			}
+			result.Pushed = true
+		}
+	}
+	return writeResponse(stdout, opts["output"], jevmem.OK(result))
+}
+
+func shortDuration(value time.Duration) string {
+	if value < time.Second {
+		return value.Round(100 * time.Millisecond).String()
+	}
+	return value.Round(time.Second).String()
 }
 
 func newService(ensureAssets bool) (*jevmem.Service, func(), error) {
@@ -329,7 +434,24 @@ func runSearchAnalogies(args []string, stdin io.Reader, stdout io.Writer) error 
 		return err
 	}
 	defer cleanup()
-	return writeResponse(stdout, opts["output"], svc.SearchAnalogies(context.Background(), req))
+	response := svc.SearchAnalogies(context.Background(), req)
+	if reportPath := strings.TrimSpace(opts["html-report"]); reportPath != "" && response.OK {
+		html, err := jevmem.RenderAnalogSearchHTML(response.Data, time.Now())
+		if err != nil {
+			return err
+		}
+		reportPath, err = filepath.Abs(reportPath)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(reportPath, []byte(html), 0o644); err != nil {
+			return err
+		}
+	}
+	return writeResponse(stdout, opts["output"], response)
 }
 
 func runRetryPush(args []string, stdout io.Writer) error {
@@ -540,15 +662,16 @@ func schema() map[string]any {
 			"retry_push":       map[string]any{"type": "object", "properties": map[string]any{"dry_run": map[string]any{"type": "boolean"}}},
 		},
 		"commands": map[string]any{
-			"save":             map[string]any{"output": []string{"json", "text"}},
-			"search":           map[string]any{"output": []string{"json", "ndjson", "text"}},
-			"save-decision":    map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
-			"search-analogies": map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
-			"sync":             map[string]any{"output": []string{"json", "text"}},
-			"status":           map[string]any{"output": []string{"json", "text"}},
-			"retry-push":       map[string]any{"output": []string{"json", "text"}},
-			"jev-check":        map[string]any{"output": []string{"json"}},
-			"local-setup":      map[string]any{"output": []string{"json"}},
+			"save":                  map[string]any{"output": []string{"json", "text"}},
+			"search":                map[string]any{"output": []string{"json", "ndjson", "text"}},
+			"save-decision":         map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
+			"search-analogies":      map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}, "options": []string{"html-report"}},
+			"sync":                  map[string]any{"output": []string{"json", "text"}},
+			"status":                map[string]any{"output": []string{"json", "text"}},
+			"retry-push":            map[string]any{"output": []string{"json", "text"}},
+			"jev-check":             map[string]any{"output": []string{"json"}},
+			"local-setup":           map[string]any{"output": []string{"json"}},
+			"backfill-fingerprints": map[string]any{"output": []string{"json", "text"}, "options": []string{"repo", "remote", "local", "limit", "laya-batch-size", "dry-run", "resume", "commit", "push"}},
 			"fingerprint": map[string]any{
 				"input":  []string{"json"},
 				"output": []string{"json", "text"},
@@ -605,7 +728,7 @@ func parseArgs(args []string) (map[string]string, []string, error) {
 			opts[k] = v
 			continue
 		}
-		if key == "all" || key == "dry-run" || key == "non-interactive" || key == "local" {
+		if key == "all" || key == "dry-run" || key == "non-interactive" || key == "local" || key == "resume" || key == "commit" || key == "push" {
 			opts[key] = "true"
 			continue
 		}
