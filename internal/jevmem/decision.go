@@ -97,7 +97,7 @@ func (e *JevFingerprintExtractor) Extract(ctx context.Context, decision Decision
 	}
 	fingerprint := Fingerprint{
 		SchemaVersion:    FingerprintSchemaV1,
-		Extractor:        "jev",
+		Extractor:        fingerprintExtractorName(e.Evaluator),
 		ExtractorVersion: e.ExtractorVersion,
 		Values:           make(map[string]AttributeValue, len(FingerprintAttributesV1)),
 	}
@@ -132,6 +132,13 @@ func (e *JevFingerprintExtractor) Extract(ctx context.Context, decision Decision
 		return Fingerprint{}, err
 	}
 	return fingerprint, nil
+}
+
+func fingerprintExtractorName(evaluator JevEvaluator) string {
+	if _, ok := evaluator.(*LocalLayaEvaluator); ok {
+		return "laya-mlx"
+	}
+	return "jev"
 }
 
 func applicabilityQuestion(definition AttributeDefinition) JevQuestion {

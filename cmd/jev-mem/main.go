@@ -42,7 +42,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "status":
 		return runStatus(args[1:], stdout)
 	case "jev-check":
-		return runJevCheck(stdout)
+		return runJevCheck(args[1:], stdout)
+	case "local-setup":
+		return runLocalSetup(args[1:], stdout)
 	case "fingerprint":
 		return runFingerprint(args[1:], stdin, stdout)
 	case "heatmap":
@@ -50,7 +52,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "schema":
 		return json.NewEncoder(stdout).Encode(schema())
 	case "mcp":
-		return runMCP(stdin, stdout)
+		return runMCP(args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
@@ -79,7 +81,7 @@ func runHeatmap(args []string, stdin io.Reader, stdout io.Writer) error {
 	return err
 }
 
-func newDecisionService() (*jevmem.Service, func(), error) {
+func newDecisionService(backend string) (*jevmem.Service, func(), error) {
 	svc, cleanup, err := newService(true)
 	if err != nil {
 		return nil, nil, err
@@ -89,13 +91,18 @@ func newDecisionService() (*jevmem.Service, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	evaluator, evaluatorCleanup, err := jevmem.NewJevEvaluatorFromEnvironment(workDir, backend)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	svc.WithFingerprintExtractor(&jevmem.JevFingerprintExtractor{Evaluator: client, BatchSize: 25})
-	return svc, cleanup, nil
+	svc.WithFingerprintExtractor(&jevmem.JevFingerprintExtractor{Evaluator: evaluator, BatchSize: 25})
+	return svc, func() {
+		if evaluatorCleanup != nil {
+			_ = evaluatorCleanup.Close()
+		}
+		cleanup()
+	}, nil
 }
 
 func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
@@ -114,11 +121,14 @@ func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	evaluator, evaluatorCleanup, err := jevmem.NewJevEvaluatorFromEnvironment(workDir, fingerprintBackendOption(opts))
 	if err != nil {
 		return err
 	}
-	extractor := &jevmem.JevFingerprintExtractor{Evaluator: client, BatchSize: 25}
+	if evaluatorCleanup != nil {
+		defer evaluatorCleanup.Close()
+	}
+	extractor := &jevmem.JevFingerprintExtractor{Evaluator: evaluator, BatchSize: 25}
 	fingerprint, err := extractor.Extract(context.Background(), decision)
 	if err != nil {
 		return err
@@ -126,16 +136,23 @@ func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
 	return writeResponse(stdout, opts["output"], jevmem.OK(fingerprint))
 }
 
-func runJevCheck(stdout io.Writer) error {
+func runJevCheck(args []string, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
 	workDir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	evaluator, evaluatorCleanup, err := jevmem.NewJevEvaluatorFromEnvironment(workDir, fingerprintBackendOption(opts))
 	if err != nil {
 		return err
 	}
-	response, err := client.Evaluate(context.Background(), map[string]any{
+	if evaluatorCleanup != nil {
+		defer evaluatorCleanup.Close()
+	}
+	response, err := evaluator.Evaluate(context.Background(), map[string]any{
 		"application": "jev-mem",
 		"purpose":     "API connectivity check",
 	}, map[string]jevmem.JevQuestion{
@@ -160,6 +177,22 @@ func runJevCheck(stdout io.Writer) error {
 		"model": response.Model,
 		"usage": response.Usage,
 	})
+}
+
+func runLocalSetup(args []string, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	result, err := jevmem.SetupLocalLaya(context.Background(), workDir, os.Stderr)
+	if err != nil {
+		return err
+	}
+	return writeResponse(stdout, opts["output"], jevmem.OK(result))
 }
 
 func newService(ensureAssets bool) (*jevmem.Service, func(), error) {
@@ -238,7 +271,7 @@ func runSaveDecision(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
 		return err
 	}
-	svc, cleanup, err := newDecisionService()
+	svc, cleanup, err := newDecisionService(fingerprintBackendOption(opts))
 	if err != nil {
 		return err
 	}
@@ -291,7 +324,7 @@ func runSearchAnalogies(args []string, stdin io.Reader, stdout io.Writer) error 
 	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
 		return err
 	}
-	svc, cleanup, err := newDecisionService()
+	svc, cleanup, err := newDecisionService(fingerprintBackendOption(opts))
 	if err != nil {
 		return err
 	}
@@ -338,7 +371,22 @@ func runStatus(args []string, stdout io.Writer) error {
 	return writeResponse(stdout, opts["output"], svc.Status(context.Background()))
 }
 
-func runMCP(stdin io.Reader, stdout io.Writer) error {
+func runMCP(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if backend := fingerprintBackendOption(opts); backend != "" {
+		resolved, err := jevmem.ResolveJevBackend("", backend)
+		if err != nil {
+			return err
+		}
+		// Decision MCP tools run in child processes; the environment is the
+		// explicit, inherited backend selection for those children.
+		if err := os.Setenv("JEV_BACKEND", resolved); err != nil {
+			return err
+		}
+	}
 	// The MCP transport is a long-running loop. The embedding model (~470MB of
 	// native ONNX memory) is expensive to load, and once loaded the OS does not
 	// reclaim it in-process even after the session is destroyed (the C allocator
@@ -500,6 +548,7 @@ func schema() map[string]any {
 			"status":           map[string]any{"output": []string{"json", "text"}},
 			"retry-push":       map[string]any{"output": []string{"json", "text"}},
 			"jev-check":        map[string]any{"output": []string{"json"}},
+			"local-setup":      map[string]any{"output": []string{"json"}},
 			"fingerprint": map[string]any{
 				"input":  []string{"json"},
 				"output": []string{"json", "text"},
@@ -556,7 +605,7 @@ func parseArgs(args []string) (map[string]string, []string, error) {
 			opts[k] = v
 			continue
 		}
-		if key == "all" || key == "dry-run" || key == "non-interactive" {
+		if key == "all" || key == "dry-run" || key == "non-interactive" || key == "local" {
 			opts[key] = "true"
 			continue
 		}
@@ -567,6 +616,16 @@ func parseArgs(args []string) (map[string]string, []string, error) {
 		i++
 	}
 	return opts, rest, nil
+}
+
+func fingerprintBackendOption(opts map[string]string) string {
+	if opts["local"] == "true" {
+		return jevmem.LocalLayaBackend
+	}
+	if value := opts["jev-backend"]; value != "" {
+		return value
+	}
+	return opts["jev"]
 }
 
 func atoiDefault(s string, def int) int {

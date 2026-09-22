@@ -16,7 +16,25 @@ func TestLiveJevCrossDomainAnalogy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	extractor := &JevFingerprintExtractor{Evaluator: client, BatchSize: 25}
+	assertCrossDomainAnalogy(t, &JevFingerprintExtractor{Evaluator: client, BatchSize: 25})
+}
+
+// TestLiveLocalLayaCrossDomainAnalogy exercises the installed Apple Silicon
+// backend. It is opt-in because it requires laya-mlx and its checkpoint.
+func TestLiveLocalLayaCrossDomainAnalogy(t *testing.T) {
+	if os.Getenv("JEV_LOCAL_LIVE_TEST") != "1" {
+		t.Skip("set JEV_LOCAL_LIVE_TEST=1 to run the local Laya acceptance evaluation")
+	}
+	evaluator, err := NewLocalLayaEvaluatorFromEnvironment("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = evaluator.Close() })
+	assertCrossDomainAnalogy(t, &JevFingerprintExtractor{Evaluator: evaluator, BatchSize: 25})
+}
+
+func assertCrossDomainAnalogy(t *testing.T, extractor FingerprintExtractor) {
+	t.Helper()
 	cases := map[string]DecisionInput{
 		"database_delay": {
 			Statement:   "Postpone the full migration to a proprietary database",

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">jev-mem architecture</title>
-  <desc id="desc">Decision input flows to both local semantic embeddings and Jev one hundred attribute fingerprints, which are stored in Git Markdown and indexed in SQLite for hybrid analogical search. Heatmaps are visualization only.</desc>
+  <desc id="desc">Decision input flows to local semantic embeddings and one hundred attribute fingerprints produced by the Jev API or local Laya-MLX, then stored in Git Markdown and indexed in SQLite for hybrid analogical search. Heatmaps are visualization only.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0l10 5-10 5z" fill="#475569"/></marker>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="145%"><feDropShadow dx="0" dy="9" stdDeviation="11" flood-color="#0f172a" flood-opacity=".11"/></filter>
@@ -51,8 +51,8 @@
   </g>
   <g filter="url(#shadow)">
     <rect x="884" y="264" width="252" height="122" rx="18" fill="#fff" stroke="#c4b5fd"/>
-    <text x="918" y="303" class="label">Jev API</text>
-    <text x="918" y="331" class="body">fixed schema v1</text>
+    <text x="918" y="303" class="label">Jev API / Laya-MLX</text>
+    <text x="918" y="331" class="body">cloud or local · schema v1</text>
     <text x="918" y="356" class="mono">100-attribute fingerprint</text>
   </g>
   <path d="M806 192c35-24 43-25 62-25" fill="none" stroke="#0891b2" stroke-width="3" marker-end="url(#arrow)"/>

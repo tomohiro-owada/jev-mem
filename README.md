@@ -12,7 +12,7 @@
   <a href="https://github.com/tomohiro-owada/jev-mem/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tomohiro-owada/jev-mem/ci.yml?branch=main&style=flat-square&label=ci"></a>
   <img alt="Go" src="https://img.shields.io/badge/go-1.24%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-0f766e?style=flat-square">
-  <img alt="Jev" src="https://img.shields.io/badge/fingerprint-Jev-7c3aed?style=flat-square">
+  <img alt="Fingerprint" src="https://img.shields.io/badge/fingerprint-Jev%20%7C%20local%20Laya--MLX-7c3aed?style=flat-square">
   <img alt="Embeddings" src="https://img.shields.io/badge/embeddings-local%20ONNX-2563eb?style=flat-square">
   <img alt="Storage" src="https://img.shields.io/badge/source%20of%20truth-Git%20Markdown-f97316?style=flat-square">
 </p>
@@ -40,7 +40,7 @@ SaaS年間契約を見送った
 ## 現在の機能
 
 - Decision / Rationale / Evidence / Contextを構造化して保存
-- Jevで固定100属性を0 / 25 / 50 / 75 / 100の5段階評価
+- Jev APIまたはlocal Laya-MLXで固定100属性を0 / 25 / 50 / 75 / 100の5段階評価
 - `applicable` / `unknown` / `not_applicable`を区別
 - 属性ごとのconfidenceと根拠参照を保存
 - ローカルONNX embeddingによるsemantic search
@@ -60,7 +60,7 @@ SaaS年間契約を見送った
 ```text
 Decision
   ├─ semantic text ── local ONNX ── semantic embedding
-  └─ structured input ── Jev ── 100-attribute fingerprint
+  └─ structured input ── Jev API / local Laya-MLX ── 100-attribute fingerprint
                                       │
                                       ├─ 属性値で類似検索
                                       └─ 同じ値を10×10 SVGとして表示
@@ -125,7 +125,8 @@ APIは`semantic_score`、`fingerprint_score`、`adjusted_fingerprint_score`、`c
 - 記憶保存用の作成済みGit remote repository
 - remoteへpushできるSSHまたはHTTPS認証
 - 初回asset取得用のnetwork access
-- Decision Fingerprint機能を使う場合はJev API key
+- Decision Fingerprint機能をcloudで使う場合はJev API key
+- local fingerprintを使う場合はApple Silicon、macOS 14+、Python 3.11または3.12
 
 ローカルembeddingは`intfloat/multilingual-e5-small`、384次元、ONNX Runtimeです。モデル、tokenizer、runtimeは初回のembedding使用時にdownloadされ、OSのapplication data directoryへcacheされます。
 
@@ -203,9 +204,44 @@ jev-mem jev-check
 
 現在は25属性ずつ処理するため、1つのFingerprint生成は通常4回のJev API requestになります。
 
+## Local Laya-MLX
+
+Apple Silicon Macでは、Jev APIの代わりに[Laya-MLX](https://github.com/mizorewww/laya-mlx)をローカル推論backendとして使用できます。API keyは不要です。日本語Decision向けの既定checkpointは`aac6fef/laya-multilingual-mlx`です。
+
+初回だけ、専用virtual environmentの作成、package install、checkpoint downloadを実行します。global Python環境は変更しません。
+
+```bash
+jev-mem local-setup --output json
+jev-mem jev-check --local
+```
+
+以後、Decision系commandへ`--local`を付けるとLaya-MLXを使用します。
+
+```bash
+jev-mem fingerprint --local --input json --output json < decision.json
+jev-mem save-decision --local --input json --output json < request.json
+jev-mem search-analogies --local --input json --output json < query.json
+jev-mem mcp --local
+```
+
+同じ指定は`--jev local`または`JEV_BACKEND=local`でも行えます。`mcp --local`では子processにも選択が引き継がれます。cloudが既定なので、既存のJev API利用方法は変わりません。
+
+| local設定 | default | 用途 |
+|---|---|---|
+| `JEV_LOCAL_MODEL` | `aac6fef/laya-multilingual-mlx` | Hugging Face checkpointまたはlocal model path |
+| `JEV_LOCAL_MODEL_REVISION` | README記載の固定commit | checkpointの再現可能なrevision |
+| `JEV_LOCAL_DEVICE` | `gpu` | MLX device (`gpu` / `cpu`) |
+| `JEV_LOCAL_DTYPE` | `float16` | 推論精度 |
+| `JEV_LOCAL_BATCH_SIZE` | `16` | 1 forward passあたりの質問数 |
+| `JEV_LOCAL_PYTHON` | 専用venv | 既存のPython環境を明示的に使う場合 |
+
+local workerはHTTP portを開きません。Go processがPython workerを直接起動し、1 command内の4回の属性batchで読み込んだmodelを再利用し、command終了時に停止します。最初のcheckpoint取得後の推論内容は外部APIへ送信されません。
+
+Laya-MLXは100属性すべてを採点するdense backendとして扱います。LayaにはJevの`applicable / unknown / not_applicable`と同等の判定契約がないため、adapterが返却scoreを既存のJev互換形式へラップします。scoreのentropy confidenceは変更せず保存され、local modelが不確かな属性はhybrid rankingで弱く扱われます。cloud Jev backendは従来どおり3状態を明示的に評価します。
+
 ## Quick start: Decisionを保存する
 
-最初は`dry_run: true`で入力、security check、Jev評価、embedding生成まで確認できます。dry-runでもJev APIは呼び出しますが、ファイル作成、Git commit、push、index更新は行いません。
+最初は`dry_run: true`で入力、security check、fingerprint評価、embedding生成まで確認できます。cloud backendではdry-runでもJev APIを呼び出しますが、ファイル作成、Git commit、push、index更新は行いません。local backendでは`--local`を付けてください。
 
 ```bash
 jev-mem save-decision --input json --output json <<'JSON'
@@ -460,11 +496,19 @@ JEV_LIVE_TEST=1 go test ./internal/jevmem -run TestLiveJevCrossDomainAnalogy -v 
 
 この評価では、DB移行延期とSaaS年間契約延期が、DB移行延期と機器即時交換より構造的に近いことを検証します。通常CIではAPI keyを必要としないようskipされます。
 
+install済みLaya-MLXを使う同じlocal acceptance evaluation:
+
+```bash
+JEV_LOCAL_LIVE_TEST=1 go test ./internal/jevmem -run TestLiveLocalLayaCrossDomainAnalogy -v -count=1
+```
+
+Laya-MLXはJevとは別modelです。テスト通過は同一品質を意味しないため、保存済みDecisionを一括移行する前に、代表sampleでscore差とconfidenceを確認してください。
+
 ## Status and limitations
 
 - Fingerprint schemaは現在v1。属性の意味や順番を変更する場合はschema versionを上げる
 - 100属性と検索weightは仮説であり、実Decisionの関連度評価から調整する前提
-- Fingerprint extractionには外部Jev APIを使い、semantic embeddingはlocalで実行
+- Fingerprint extractionはJev APIまたはlocal Laya-MLX、semantic embeddingはlocalで実行
 - SQLite検索は全候補走査。大規模ANN indexは未実装
 - Web UIは未実装。heatmapはSVG出力
 - Git remote作成やSSH key管理は対象外
