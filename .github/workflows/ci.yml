@@ -34,10 +34,10 @@ jobs:
         include:
           - name: linux-amd64
             os: ubuntu-latest
-            artifact: git-mcp-memory-linux-amd64
+            artifact: jev-mem-linux-amd64
           - name: darwin-arm64
             os: macos-14
-            artifact: git-mcp-memory-darwin-arm64
+            artifact: jev-mem-darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -50,7 +50,7 @@ jobs:
           cache: true
 
       - name: Build
-        run: go build -ldflags "-s -w" -o "${{ matrix.artifact }}" ./cmd/git-mcp-memory
+        run: go build -ldflags "-s -w" -o "${{ matrix.artifact }}" ./cmd/jev-mem
 
       - name: Verify binary
         run: ./"${{ matrix.artifact }}" schema --output json
