@@ -12,11 +12,17 @@ import (
 )
 
 type Service struct {
-	Config   Config
-	Repo     GitRepo
-	Index    *Index
-	Embedder Embedder
-	Security SecurityGate
+	Config    Config
+	Repo      GitRepo
+	Index     *Index
+	Embedder  Embedder
+	Security  SecurityGate
+	Extractor FingerprintExtractor
+}
+
+func (s *Service) WithFingerprintExtractor(extractor FingerprintExtractor) *Service {
+	s.Extractor = extractor
+	return s
 }
 
 func NewService(cfg Config, idx *Index, emb Embedder) *Service {
@@ -101,6 +107,80 @@ func (s *Service) Save(ctx context.Context, req SaveRequest) Response[SaveResult
 	return OK(SaveResult{ProjectID: projectID, Path: rel, CommitHash: commit, Pushed: pushed, Indexed: pushed, EmbeddingDim: len(embedding)}, warnings...)
 }
 
+func (s *Service) SaveDecision(ctx context.Context, req SaveDecisionRequest) Response[SaveResult] {
+	if err := s.validateDecisionSave(req); err != nil {
+		return Fail[SaveResult]("validation_failed", err.Error(), "", nil)
+	}
+	if s.Extractor == nil {
+		return Fail[SaveResult]("fingerprint_unavailable", "fingerprint extractor is not configured", "", nil)
+	}
+	projectID, err := DeriveProjectID(req.CurrentWorkspacePath)
+	if err != nil {
+		return Fail[SaveResult]("validation_failed", err.Error(), "current_workspace_path", nil)
+	}
+	semanticText := req.Decision.SemanticText()
+	findings := s.Security.Check(req.Title, semanticText)
+	if len(findings) > 0 {
+		return Fail[SaveResult]("content_rejected_by_security_policy", "content rejected by security policy", "", map[string]any{"findings": findings})
+	}
+	fingerprint, err := s.Extractor.Extract(ctx, req.Decision)
+	if err != nil {
+		return Fail[SaveResult]("fingerprint_failed", err.Error(), "", nil)
+	}
+	embedding, err := s.Embedder.Embed(ctx, s.Config.EmbeddingDocumentPrefix+req.Title+"\n\n"+semanticText)
+	if err != nil {
+		return Fail[SaveResult]("embedding_failed", err.Error(), "", nil)
+	}
+	now := time.Now().UTC()
+	rel := filepath.Join("projects", projectID, UniqueMemoryFilename(req.Title, now, randomHex(3)))
+	if req.DryRun {
+		return OK(SaveResult{ProjectID: projectID, Path: rel, DryRun: true, EmbeddingDim: len(embedding), Fingerprinted: true})
+	}
+	if err := s.Repo.Ensure(ctx); err != nil {
+		return Fail[SaveResult]("git_failed", err.Error(), "", nil)
+	}
+	if err := s.Repo.PullRebase(ctx); err != nil {
+		return Fail[SaveResult]("git_pull_failed", err.Error(), "", gitDetails(err))
+	}
+	raw, err := RenderDecisionMarkdown(projectID, req.Title, req.Decision, fingerprint, "mcp", now)
+	if err != nil {
+		return Fail[SaveResult]("render_failed", err.Error(), "", nil)
+	}
+	full := filepath.Join(s.Config.GitDir, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return Fail[SaveResult]("filesystem_failed", err.Error(), "", nil)
+	}
+	if err := os.WriteFile(full, []byte(raw), 0o644); err != nil {
+		return Fail[SaveResult]("filesystem_failed", err.Error(), "", nil)
+	}
+	commit, err := s.Repo.AddCommit(ctx, rel, "Save decision: "+req.Title)
+	if err != nil {
+		return Fail[SaveResult]("git_commit_failed", err.Error(), "", gitDetails(err))
+	}
+	var warnings []Warning
+	pushed := true
+	if err := s.Repo.Push(ctx); err != nil {
+		pushed = false
+		warnings = append(warnings, Warning{Code: "push_failed", Message: "decision was committed locally but push failed", Details: gitDetails(err)})
+	}
+	indexed := false
+	if pushed && s.Index != nil {
+		mem, ok := ParseMemoryMarkdown(rel, raw)
+		if !ok {
+			warnings = append(warnings, Warning{Code: "index_failed", Message: "rendered decision could not be parsed"})
+		} else {
+			mem.Embedding = embedding
+			mem.IndexedAt = time.Now().UTC()
+			if err := s.Index.Upsert(ctx, mem, s.Config.EmbeddingProvider, s.Config.EmbeddingModel); err != nil {
+				warnings = append(warnings, Warning{Code: "index_failed", Message: err.Error()})
+			} else {
+				indexed = true
+			}
+		}
+	}
+	return OK(SaveResult{ProjectID: projectID, Path: rel, CommitHash: commit, Pushed: pushed, Indexed: indexed, EmbeddingDim: len(embedding), Fingerprinted: true}, warnings...)
+}
+
 func (s *Service) Search(ctx context.Context, req SearchRequest) Response[SearchData] {
 	if strings.TrimSpace(req.Query) == "" {
 		return Fail[SearchData]("validation_failed", "query is required", "query", nil)
@@ -150,6 +230,53 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) Response[Search
 		results = []SearchResult{}
 	}
 	return OK(SearchData{Results: results}, warnings...)
+}
+
+func (s *Service) SearchAnalogies(ctx context.Context, req AnalogSearchRequest) Response[AnalogSearchData] {
+	if err := req.Decision.Validate(); err != nil {
+		return Fail[AnalogSearchData]("validation_failed", err.Error(), "decision", nil)
+	}
+	if s.Extractor == nil {
+		return Fail[AnalogSearchData]("fingerprint_unavailable", "fingerprint extractor is not configured", "", nil)
+	}
+	if err := s.Repo.Ensure(ctx); err != nil {
+		return Fail[AnalogSearchData]("git_failed", err.Error(), "", nil)
+	}
+	var warnings []Warning
+	if commits, _ := s.Repo.Unpushed(ctx); len(commits) > 0 {
+		r := s.RetryPush(ctx, RetryPushRequest{})
+		if !r.OK || !r.Data.Pushed {
+			warnings = append(warnings, Warning{Code: "sync_failed_local_results", Message: "retry push failed; search results are based on local repository state", Details: map[string]any{"unpushed_commit_count": len(commits), "recommended_action": "retry_push"}})
+		}
+	}
+	if len(warnings) == 0 {
+		if err := s.Repo.PullRebase(ctx); err != nil {
+			warnings = append(warnings, Warning{Code: "pull_failed_local_results", Message: "pull failed; search results are based on local repository state", Details: gitDetails(err)})
+		}
+	}
+	if err := s.Resync(ctx); err != nil {
+		return Fail[AnalogSearchData]("index_failed", err.Error(), "", nil)
+	}
+	fingerprint, err := s.Extractor.Extract(ctx, req.Decision)
+	if err != nil {
+		return Fail[AnalogSearchData]("fingerprint_failed", err.Error(), "", nil)
+	}
+	embedding, err := s.Embedder.Embed(ctx, s.Config.EmbeddingQueryPrefix+req.Decision.SemanticText())
+	if err != nil {
+		return Fail[AnalogSearchData]("embedding_failed", err.Error(), "", nil)
+	}
+	projectID := ""
+	if !req.All && req.CurrentWorkspacePath != "" {
+		projectID, err = DeriveProjectID(req.CurrentWorkspacePath)
+		if err != nil {
+			return Fail[AnalogSearchData]("validation_failed", err.Error(), "current_workspace_path", nil)
+		}
+	}
+	results, err := s.Index.SearchAnalogies(ctx, embedding, fingerprint, projectID, req.Limit, req.SemanticWeight, req.FingerprintWeight)
+	if err != nil {
+		return Fail[AnalogSearchData]("index_failed", err.Error(), "", nil)
+	}
+	return OK(AnalogSearchData{QueryFingerprint: fingerprint, Results: results}, warnings...)
 }
 
 func (s *Service) Sync(ctx context.Context) Response[SyncResult] {
@@ -366,6 +493,29 @@ func (s *Service) validateSave(req SaveRequest) error {
 	}
 	if contentBytes > s.Config.Limits.MaxContentBytes {
 		return fmt.Errorf("content exceeds max_content_bytes")
+	}
+	return nil
+}
+
+func (s *Service) validateDecisionSave(req SaveDecisionRequest) error {
+	if strings.TrimSpace(req.CurrentWorkspacePath) == "" {
+		return fmt.Errorf("current_workspace_path is required")
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		return fmt.Errorf("title is required")
+	}
+	if err := req.Decision.Validate(); err != nil {
+		return err
+	}
+	if len([]byte(req.Title)) > s.Config.Limits.MaxTitleBytes {
+		return fmt.Errorf("title exceeds max_title_bytes")
+	}
+	contentBytes := len([]byte(req.Decision.SemanticText()))
+	if contentBytes > s.Config.Limits.HardMaxContentBytes {
+		return fmt.Errorf("decision exceeds hard_max_content_bytes")
+	}
+	if contentBytes > s.Config.Limits.MaxContentBytes {
+		return fmt.Errorf("decision exceeds max_content_bytes")
 	}
 	return nil
 }

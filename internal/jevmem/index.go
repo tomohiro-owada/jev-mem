@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -263,6 +264,79 @@ func (i *Index) SearchFingerprint(ctx context.Context, query Fingerprint, projec
 			return results[a].Similarity.Coverage > results[b].Similarity.Coverage
 		}
 		return results[a].Similarity.Score > results[b].Similarity.Score
+	})
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
+}
+
+func (i *Index) SearchAnalogies(ctx context.Context, queryEmbedding []float32, queryFingerprint Fingerprint, projectID string, limit int, semanticWeight, fingerprintWeight float64) ([]AnalogSearchResult, error) {
+	if len(queryEmbedding) == 0 {
+		return nil, errors.New("query embedding is required")
+	}
+	if err := ValidateFingerprint(queryFingerprint); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if semanticWeight == 0 && fingerprintWeight == 0 {
+		semanticWeight, fingerprintWeight = 0.35, 0.65
+	}
+	if semanticWeight < 0 || fingerprintWeight < 0 || semanticWeight+fingerprintWeight <= 0 {
+		return nil, errors.New("search weights must be non-negative and not both zero")
+	}
+	totalWeight := semanticWeight + fingerprintWeight
+	semanticWeight /= totalWeight
+	fingerprintWeight /= totalWeight
+	rows, err := i.db.QueryContext(ctx, `SELECT project_id, path, title, content, embedding, fingerprint, fingerprint_status FROM memories WHERE embedding_status = 'ready' AND (? = '' OR project_id = ?)`, projectID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := []AnalogSearchResult{}
+	for rows.Next() {
+		var project, path, title, content, embeddingJSON, fingerprintStatus string
+		var fingerprintJSON sql.NullString
+		if err := rows.Scan(&project, &path, &title, &content, &embeddingJSON, &fingerprintJSON, &fingerprintStatus); err != nil {
+			return nil, err
+		}
+		var embedding []float32
+		if err := json.Unmarshal([]byte(embeddingJSON), &embedding); err != nil {
+			continue
+		}
+		semanticScore := Cosine(queryEmbedding, embedding)
+		result := AnalogSearchResult{
+			ProjectID:     project,
+			Path:          path,
+			Title:         title,
+			Content:       content,
+			SemanticScore: semanticScore,
+			CombinedScore: semanticWeight * semanticScore,
+		}
+		if fingerprintStatus == "ready" && fingerprintJSON.Valid {
+			var candidate Fingerprint
+			if err := json.Unmarshal([]byte(fingerprintJSON.String), &candidate); err == nil {
+				if similarity, err := CompareFingerprints(queryFingerprint, candidate); err == nil {
+					adjusted := similarity.Score * math.Sqrt(similarity.Coverage) * similarity.EffectiveConfidence
+					result.FingerprintScore = similarity.Score
+					result.AdjustedFingerprintScore = adjusted
+					result.CombinedScore += fingerprintWeight * adjusted
+					result.FingerprintSimilarity = &similarity
+				}
+			}
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(results, func(a, b int) bool {
+		if results[a].CombinedScore == results[b].CombinedScore {
+			return results[a].FingerprintScore > results[b].FingerprintScore
+		}
+		return results[a].CombinedScore > results[b].CombinedScore
 	})
 	if len(results) > limit {
 		results = results[:limit]

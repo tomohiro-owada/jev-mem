@@ -6,6 +6,17 @@ func fpValue(value, confidence float64) AttributeValue {
 	return AttributeValue{Value: &value, Applicability: Applicable, Observation: Inferred, Confidence: confidence}
 }
 
+func TestEveryFingerprintAttributeHasAHighAnchor(t *testing.T) {
+	if len(attributeHighAnchorsV1) != len(FingerprintAttributesV1) {
+		t.Fatalf("got %d anchors for %d attributes", len(attributeHighAnchorsV1), len(FingerprintAttributesV1))
+	}
+	for _, definition := range FingerprintAttributesV1 {
+		if attributeHighAnchorsV1[definition.ID] == "" {
+			t.Errorf("missing high anchor for %s", definition.ID)
+		}
+	}
+}
+
 func TestFingerprintCatalogV1HasExactlyOneHundredStableAttributes(t *testing.T) {
 	if len(FingerprintAttributesV1) != 100 {
 		t.Fatalf("attribute count = %d", len(FingerprintAttributesV1))

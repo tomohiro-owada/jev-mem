@@ -29,8 +29,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	switch args[0] {
 	case "save":
 		return runSave(args[1:], stdin, stdout)
+	case "save-decision":
+		return runSaveDecision(args[1:], stdin, stdout)
 	case "search":
 		return runSearch(args[1:], stdin, stdout)
+	case "search-analogies":
+		return runSearchAnalogies(args[1:], stdin, stdout)
 	case "retry-push":
 		return runRetryPush(args[1:], stdout)
 	case "sync":
@@ -48,6 +52,25 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func newDecisionService() (*jevmem.Service, func(), error) {
+	svc, cleanup, err := newService(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	svc.WithFingerprintExtractor(&jevmem.JevFingerprintExtractor{Evaluator: client, BatchSize: 25})
+	return svc, cleanup, nil
 }
 
 func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
@@ -178,6 +201,26 @@ func runSave(args []string, stdin io.Reader, stdout io.Writer) error {
 	return writeResponse(stdout, opts["output"], svc.Save(context.Background(), req))
 }
 
+func runSaveDecision(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if opts["input"] != "json" {
+		return fmt.Errorf("save-decision requires --input json")
+	}
+	var req jevmem.SaveDecisionRequest
+	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
+		return err
+	}
+	svc, cleanup, err := newDecisionService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return writeResponse(stdout, opts["output"], svc.SaveDecision(context.Background(), req))
+}
+
 func runSearch(args []string, stdin io.Reader, stdout io.Writer) error {
 	opts, rest, err := parseArgs(args)
 	if err != nil {
@@ -209,6 +252,26 @@ func runSearch(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	defer cleanup()
 	return writeSearchResponse(stdout, opts["output"], svc.Search(context.Background(), req))
+}
+
+func runSearchAnalogies(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if opts["input"] != "json" {
+		return fmt.Errorf("search-analogies requires --input json")
+	}
+	var req jevmem.AnalogSearchRequest
+	if err := json.NewDecoder(stdin).Decode(&req); err != nil {
+		return err
+	}
+	svc, cleanup, err := newDecisionService()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return writeResponse(stdout, opts["output"], svc.SearchAnalogies(context.Background(), req))
 }
 
 func runRetryPush(args []string, stdout io.Writer) error {
@@ -330,6 +393,10 @@ func callTool(svc *jevmem.Service, raw json.RawMessage) any {
 		return runToolViaSubprocess("save", in.Arguments)
 	case "search_memory":
 		return runToolViaSubprocess("search", in.Arguments)
+	case "save_decision":
+		return runToolViaSubprocess("save-decision", in.Arguments)
+	case "search_analogies":
+		return runToolViaSubprocess("search-analogies", in.Arguments)
 	case "retry_push":
 		var req jevmem.RetryPushRequest
 		_ = json.Unmarshal(in.Arguments, &req)
@@ -380,24 +447,34 @@ func mcpTools() []map[string]any {
 	return []map[string]any{
 		{"name": "save_memory", "description": "Save a memory", "inputSchema": schema()["tools"].(map[string]any)["save_memory"]},
 		{"name": "search_memory", "description": "Search memories", "inputSchema": schema()["tools"].(map[string]any)["search_memory"]},
+		{"name": "save_decision", "description": "Save a decision with a Jev-generated structural fingerprint", "inputSchema": schema()["tools"].(map[string]any)["save_decision"]},
+		{"name": "search_analogies", "description": "Search decisions using semantic and structural fingerprint similarity", "inputSchema": schema()["tools"].(map[string]any)["search_analogies"]},
 		{"name": "retry_push", "description": "Retry pushing local commits", "inputSchema": schema()["tools"].(map[string]any)["retry_push"]},
 	}
 }
 
 func schema() map[string]any {
+	decisionProperties := map[string]any{
+		"decision": map[string]any{"type": "string"}, "rationale": map[string]any{"type": "string"}, "evidence": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "context": map[string]any{"type": "string"}, "decision_time": map[string]any{"type": "string"}, "focal_option": map[string]any{"type": "string"}, "reference_option": map[string]any{"type": "string"}, "chosen_response": map[string]any{"type": "string"}, "evaluation_horizon": map[string]any{"type": "string"},
+	}
+	decisionSchema := map[string]any{"type": "object", "required": []string{"decision", "rationale", "focal_option", "chosen_response"}, "properties": decisionProperties}
 	return map[string]any{
 		"tools": map[string]any{
-			"save_memory":   map[string]any{"type": "object", "required": []string{"current_workspace_path", "title", "content"}, "properties": map[string]any{"current_workspace_path": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "dry_run": map[string]any{"type": "boolean"}}},
-			"search_memory": map[string]any{"type": "object", "required": []string{"query"}, "properties": map[string]any{"query": map[string]any{"type": "string"}, "current_workspace_path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "all": map[string]any{"type": "boolean"}, "fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "snippet_chars": map[string]any{"type": "integer"}}},
-			"retry_push":    map[string]any{"type": "object", "properties": map[string]any{"dry_run": map[string]any{"type": "boolean"}}},
+			"save_memory":      map[string]any{"type": "object", "required": []string{"current_workspace_path", "title", "content"}, "properties": map[string]any{"current_workspace_path": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "dry_run": map[string]any{"type": "boolean"}}},
+			"search_memory":    map[string]any{"type": "object", "required": []string{"query"}, "properties": map[string]any{"query": map[string]any{"type": "string"}, "current_workspace_path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "all": map[string]any{"type": "boolean"}, "fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "snippet_chars": map[string]any{"type": "integer"}}},
+			"save_decision":    map[string]any{"type": "object", "required": []string{"current_workspace_path", "title", "decision"}, "properties": map[string]any{"current_workspace_path": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "decision": decisionSchema, "dry_run": map[string]any{"type": "boolean"}}},
+			"search_analogies": map[string]any{"type": "object", "required": []string{"decision"}, "properties": map[string]any{"decision": decisionSchema, "current_workspace_path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "all": map[string]any{"type": "boolean"}, "semantic_weight": map[string]any{"type": "number", "minimum": 0}, "fingerprint_weight": map[string]any{"type": "number", "minimum": 0}}},
+			"retry_push":       map[string]any{"type": "object", "properties": map[string]any{"dry_run": map[string]any{"type": "boolean"}}},
 		},
 		"commands": map[string]any{
-			"save":       map[string]any{"output": []string{"json", "text"}},
-			"search":     map[string]any{"output": []string{"json", "ndjson", "text"}},
-			"sync":       map[string]any{"output": []string{"json", "text"}},
-			"status":     map[string]any{"output": []string{"json", "text"}},
-			"retry-push": map[string]any{"output": []string{"json", "text"}},
-			"jev-check":  map[string]any{"output": []string{"json"}},
+			"save":             map[string]any{"output": []string{"json", "text"}},
+			"search":           map[string]any{"output": []string{"json", "ndjson", "text"}},
+			"save-decision":    map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
+			"search-analogies": map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
+			"sync":             map[string]any{"output": []string{"json", "text"}},
+			"status":           map[string]any{"output": []string{"json", "text"}},
+			"retry-push":       map[string]any{"output": []string{"json", "text"}},
+			"jev-check":        map[string]any{"output": []string{"json"}},
 			"fingerprint": map[string]any{
 				"input":  []string{"json"},
 				"output": []string{"json", "text"},

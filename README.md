@@ -336,6 +336,47 @@ Return one JSON object per result:
 jev-mem search "push failure" --all --output ndjson
 ```
 
+Save a structured decision with both a semantic embedding and a 100-attribute
+Jev fingerprint. Set `JEV_API_KEY` in the environment or in an ignored
+`.env.local` file:
+
+```bash
+jev-mem save-decision --input json --output json <<'JSON'
+{
+  "current_workspace_path": "/path/to/project",
+  "title": "Delay the annual contract",
+  "decision": {
+    "decision": "Do not sign the annual contract yet",
+    "rationale": "Preserve alternatives while evidence is incomplete.",
+    "evidence": ["A monthly trial is available"],
+    "context": "Requirements are still changing.",
+    "focal_option": "Sign for one year now",
+    "reference_option": "Use a monthly trial",
+    "chosen_response": "Delay and run the trial",
+    "evaluation_horizon": "12 months"
+  }
+}
+JSON
+```
+
+Search by semantic meaning and decision structure together. The default blend
+is 35% semantic and 65% fingerprint; both component scores remain visible:
+
+```bash
+jev-mem search-analogies --input json --output json <<'JSON'
+{
+  "decision": {
+    "decision": "Whether to commit to a new platform",
+    "rationale": "Information is incomplete, so preserve options and test first.",
+    "focal_option": "Migrate everything now",
+    "chosen_response": "Run a reversible pilot"
+  },
+  "all": true,
+  "limit": 10
+}
+JSON
+```
+
 Rebuild/synchronize local state:
 
 ```bash
@@ -693,6 +734,46 @@ jev-mem search "local embeddings" \
 
 ```bash
 jev-mem search "incident summary" --all --limit 10 --output json
+```
+
+Jevによる100属性Fingerprintと通常のsemantic embeddingを同時に保存します。
+`JEV_API_KEY`は環境変数、またはGit管理外の`.env.local`に設定します。
+
+```bash
+jev-mem save-decision --input json --output json <<'JSON'
+{
+  "current_workspace_path": "/path/to/project",
+  "title": "年間契約を延期",
+  "decision": {
+    "decision": "SaaSの年間契約を今は締結しない",
+    "rationale": "情報不足の間は選択肢を残し、先に試用する。",
+    "evidence": ["月次試用が可能"],
+    "context": "要件がまだ変化している。",
+    "focal_option": "今すぐ年間契約する",
+    "reference_option": "月次で試用する",
+    "chosen_response": "年間契約を延期して試用する",
+    "evaluation_horizon": "12か月"
+  }
+}
+JSON
+```
+
+semantic類似度と意思決定構造の類似度を合わせて検索します。既定値は
+semantic 35%、Fingerprint 65%で、両方の個別scoreも返します。
+
+```bash
+jev-mem search-analogies --input json --output json <<'JSON'
+{
+  "decision": {
+    "decision": "新しい基盤へ全面移行するか",
+    "rationale": "情報が不足しているため、選択肢を残して先に検証する。",
+    "focal_option": "今すぐ全面移行する",
+    "chosen_response": "可逆的な試験導入を行う"
+  },
+  "all": true,
+  "limit": 10
+}
+JSON
 ```
 
 同期と再 index:

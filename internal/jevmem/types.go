@@ -88,13 +88,21 @@ type SaveRequest struct {
 }
 
 type SaveResult struct {
-	ProjectID    string `json:"project_id"`
-	Path         string `json:"path"`
-	CommitHash   string `json:"commit_hash,omitempty"`
-	Pushed       bool   `json:"pushed"`
-	Indexed      bool   `json:"indexed"`
-	DryRun       bool   `json:"dry_run,omitempty"`
-	EmbeddingDim int    `json:"embedding_dim"`
+	ProjectID     string `json:"project_id"`
+	Path          string `json:"path"`
+	CommitHash    string `json:"commit_hash,omitempty"`
+	Pushed        bool   `json:"pushed"`
+	Indexed       bool   `json:"indexed"`
+	DryRun        bool   `json:"dry_run,omitempty"`
+	EmbeddingDim  int    `json:"embedding_dim"`
+	Fingerprinted bool   `json:"fingerprinted,omitempty"`
+}
+
+type SaveDecisionRequest struct {
+	CurrentWorkspacePath string        `json:"current_workspace_path"`
+	Title                string        `json:"title"`
+	Decision             DecisionInput `json:"decision"`
+	DryRun               bool          `json:"dry_run,omitempty"`
 }
 
 type SearchRequest struct {
@@ -124,6 +132,32 @@ type FingerprintSearchResult struct {
 	Title      string                `json:"title"`
 	Content    string                `json:"content"`
 	Similarity FingerprintSimilarity `json:"similarity"`
+}
+
+type AnalogSearchRequest struct {
+	Decision             DecisionInput `json:"decision"`
+	CurrentWorkspacePath string        `json:"current_workspace_path,omitempty"`
+	Limit                int           `json:"limit,omitempty"`
+	All                  bool          `json:"all,omitempty"`
+	SemanticWeight       float64       `json:"semantic_weight,omitempty"`
+	FingerprintWeight    float64       `json:"fingerprint_weight,omitempty"`
+}
+
+type AnalogSearchResult struct {
+	ProjectID                string                 `json:"project_id"`
+	Path                     string                 `json:"path"`
+	Title                    string                 `json:"title"`
+	Content                  string                 `json:"content"`
+	SemanticScore            float64                `json:"semantic_score"`
+	FingerprintScore         float64                `json:"fingerprint_score,omitempty"`
+	AdjustedFingerprintScore float64                `json:"adjusted_fingerprint_score,omitempty"`
+	CombinedScore            float64                `json:"combined_score"`
+	FingerprintSimilarity    *FingerprintSimilarity `json:"fingerprint_similarity,omitempty"`
+}
+
+type AnalogSearchData struct {
+	QueryFingerprint Fingerprint          `json:"query_fingerprint"`
+	Results          []AnalogSearchResult `json:"results"`
 }
 
 type RetryPushRequest struct {

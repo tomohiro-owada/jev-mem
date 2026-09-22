@@ -1,10 +1,12 @@
 package jevmem
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 )
 
 type DecisionInput struct {
@@ -17,6 +19,25 @@ type DecisionInput struct {
 	ReferenceOption   string   `json:"reference_option,omitempty"`
 	ChosenResponse    string   `json:"chosen_response"`
 	EvaluationHorizon string   `json:"evaluation_horizon,omitempty"`
+}
+
+func (d DecisionInput) SemanticText() string {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "Decision:\n%s\n\nRationale:\n%s", strings.TrimSpace(d.Statement), strings.TrimSpace(d.Rationale))
+	if len(d.Evidence) > 0 {
+		fmt.Fprintln(&b, "\n\nEvidence:")
+		for _, evidence := range d.Evidence {
+			if evidence = strings.TrimSpace(evidence); evidence != "" {
+				fmt.Fprintf(&b, "- %s\n", evidence)
+			}
+		}
+	}
+	if context := strings.TrimSpace(d.Context); context != "" {
+		fmt.Fprintf(&b, "\nContext:\n%s", context)
+	}
+	fmt.Fprintf(&b, "\n\nDecision frame:\n- Focal option: %s\n- Reference option: %s\n- Chosen response: %s\n- Evaluation horizon: %s",
+		strings.TrimSpace(d.FocalOption), strings.TrimSpace(d.ReferenceOption), strings.TrimSpace(d.ChosenResponse), strings.TrimSpace(d.EvaluationHorizon))
+	return strings.TrimSpace(b.String())
 }
 
 func (d DecisionInput) Validate() error {
@@ -114,12 +135,15 @@ func (e *JevFingerprintExtractor) Extract(ctx context.Context, decision Decision
 }
 
 func applicabilityQuestion(definition AttributeDefinition) JevQuestion {
+	highAnchor := attributeHighAnchorsV1[definition.ID]
 	return JevQuestion{
 		Type: "choice",
 		Instructions: map[string]any{
-			"attribute": definition.NameJA,
-			"target":    definition.Target,
-			"question":  "Decisionの記録だけを根拠に、この属性を評価できるか判定してください。記述が足りない場合はunknown、定義上対象外ならnot_applicableを選んでください。推測でapplicableにしないでください。",
+			"attribute_id": definition.ID,
+			"attribute":    definition.NameJA,
+			"target":       definition.Target,
+			"high_anchor":  highAnchor,
+			"question":     "Decisionの記録だけを根拠に、この属性を評価できるか判定してください。記述が足りない場合はunknown、定義上対象外ならnot_applicableを選んでください。推測でapplicableにしないでください。",
 		},
 		Criteria: map[string]string{
 			"applicable":     "記録に評価根拠があり、属性値を採点できる。",
@@ -130,19 +154,23 @@ func applicabilityQuestion(definition AttributeDefinition) JevQuestion {
 }
 
 func scoreQuestion(definition AttributeDefinition) JevQuestion {
+	highAnchor := attributeHighAnchorsV1[definition.ID]
 	return JevQuestion{
 		Type: "score",
 		Instructions: map[string]any{
-			"attribute": definition.NameJA,
-			"target":    definition.Target,
-			"question":  scoreInstruction(definition.Target),
+			"attribute_id": definition.ID,
+			"attribute":    definition.NameJA,
+			"target":       definition.Target,
+			"zero_anchor":  "この属性の高得点側の性質が存在しない、または反対側の性質が明確である",
+			"high_anchor":  highAnchor,
+			"question":     scoreInstruction(definition.Target),
 		},
 		Criteria: []string{
-			definition.NameJA + "が非常に低い、ほぼ存在しない、または反対側の性質が強い。",
-			definition.NameJA + "が低い。",
-			definition.NameJA + "が中程度である。",
-			definition.NameJA + "が高い。",
-			definition.NameJA + "が非常に高く、判断または対象の性質を強く特徴づける。",
+			"0点: " + definition.NameJA + "について、高得点側の性質が存在しない、または反対側の性質が明確である。",
+			"25点: " + highAnchor + "という性質が弱く存在する。",
+			"50点: " + highAnchor + "という性質が中程度である。",
+			"75点: " + highAnchor + "という性質が強い。",
+			"100点: " + highAnchor + "。",
 		},
 	}
 }
