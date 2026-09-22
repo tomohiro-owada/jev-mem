@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tomohiro-owada/gmem/internal/gmem"
+	"github.com/tomohiro-owada/jev-mem/internal/jevmem"
 )
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
-		_ = json.NewEncoder(os.Stdout).Encode(gmem.Fail[any]("command_failed", err.Error(), "", nil))
+		_ = json.NewEncoder(os.Stdout).Encode(jevmem.Fail[any]("command_failed", err.Error(), "", nil))
 		os.Exit(1)
 	}
 }
@@ -37,6 +37,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runSync(args[1:], stdout)
 	case "status":
 		return runStatus(args[1:], stdout)
+	case "jev-check":
+		return runJevCheck(stdout)
 	case "schema":
 		return json.NewEncoder(stdout).Encode(schema())
 	case "mcp":
@@ -46,28 +48,64 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 }
 
-func newService(ensureAssets bool) (*gmem.Service, func(), error) {
-	cfg, err := gmem.LoadConfig("")
+func runJevCheck(stdout io.Writer) error {
+	workDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	if err != nil {
+		return err
+	}
+	response, err := client.Evaluate(context.Background(), map[string]any{
+		"application": "jev-mem",
+		"purpose":     "API connectivity check",
+	}, map[string]jevmem.JevQuestion{
+		"connection_check": {
+			Type:         "noul",
+			Instructions: "Is this state explicitly describing a connectivity check for the jev-mem application?",
+			Criteria: map[string]string{
+				"true":  "The state explicitly says it is a connectivity check for jev-mem.",
+				"false": "The state describes something else.",
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	answer, ok := response.Answers["connection_check"]
+	if !ok || answer.Type != "noul" || answer.Noul == nil {
+		return fmt.Errorf("Jev returned an invalid connectivity-check answer")
+	}
+	return json.NewEncoder(stdout).Encode(map[string]any{
+		"ok":    true,
+		"model": response.Model,
+		"usage": response.Usage,
+	})
+}
+
+func newService(ensureAssets bool) (*jevmem.Service, func(), error) {
+	cfg, err := jevmem.LoadConfig("")
 	if err != nil {
 		return nil, nil, err
 	}
 	if ensureAssets {
-		if err := gmem.EnsureAssets(context.Background(), cfg); err != nil {
+		if err := jevmem.EnsureAssets(context.Background(), cfg); err != nil {
 			return nil, nil, err
 		}
 	}
-	idx, err := gmem.OpenIndex(cfg.IndexPath)
+	idx, err := jevmem.OpenIndex(cfg.IndexPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	emb := &gmem.E5Embedder{Config: cfg}
+	emb := &jevmem.E5Embedder{Config: cfg}
 	cleanup := func() {
 		_ = idx.Close()
 		if err := emb.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "embedder close failed:", err)
 		}
 	}
-	return gmem.NewService(cfg, idx, emb), cleanup, nil
+	return jevmem.NewService(cfg, idx, emb), cleanup, nil
 }
 
 func runSave(args []string, stdin io.Reader, stdout io.Writer) error {
@@ -75,7 +113,7 @@ func runSave(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var req gmem.SaveRequest
+	var req jevmem.SaveRequest
 	if opts["input"] == "json" {
 		if err := json.NewDecoder(stdin).Decode(&req); err != nil {
 			return err
@@ -100,7 +138,7 @@ func runSave(args []string, stdin io.Reader, stdout io.Writer) error {
 			wd, _ := os.Getwd()
 			workspace = wd
 		}
-		req = gmem.SaveRequest{CurrentWorkspacePath: workspace, Title: opts["title"], Content: body, DryRun: opts["dry-run"] == "true"}
+		req = jevmem.SaveRequest{CurrentWorkspacePath: workspace, Title: opts["title"], Content: body, DryRun: opts["dry-run"] == "true"}
 	}
 	svc, cleanup, err := newService(true)
 	if err != nil {
@@ -115,7 +153,7 @@ func runSearch(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var req gmem.SearchRequest
+	var req jevmem.SearchRequest
 	if opts["input"] == "json" {
 		if err := json.NewDecoder(stdin).Decode(&req); err != nil {
 			return err
@@ -130,7 +168,7 @@ func runSearch(args []string, stdin io.Reader, stdout io.Writer) error {
 			wd, _ := os.Getwd()
 			workspace = wd
 		}
-		req = gmem.SearchRequest{Query: rest[0], CurrentWorkspacePath: workspace, All: all, Limit: atoiDefault(opts["limit"], 10), SnippetChars: atoiDefault(opts["snippet-chars"], 0)}
+		req = jevmem.SearchRequest{Query: rest[0], CurrentWorkspacePath: workspace, All: all, Limit: atoiDefault(opts["limit"], 10), SnippetChars: atoiDefault(opts["snippet-chars"], 0)}
 		if opts["fields"] != "" {
 			req.Fields = strings.Split(opts["fields"], ",")
 		}
@@ -153,7 +191,7 @@ func runRetryPush(args []string, stdout io.Writer) error {
 		return err
 	}
 	defer cleanup()
-	return writeResponse(stdout, opts["output"], svc.RetryPush(context.Background(), gmem.RetryPushRequest{DryRun: opts["dry-run"] == "true"}))
+	return writeResponse(stdout, opts["output"], svc.RetryPush(context.Background(), jevmem.RetryPushRequest{DryRun: opts["dry-run"] == "true"}))
 }
 
 func runSync(args []string, stdout io.Writer) error {
@@ -231,10 +269,10 @@ type rpcResponse struct {
 	Error   map[string]any `json:"error,omitempty"`
 }
 
-func handleRPC(svc *gmem.Service, req rpcRequest) rpcResponse {
+func handleRPC(svc *jevmem.Service, req rpcRequest) rpcResponse {
 	switch req.Method {
 	case "initialize":
-		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "git-mcp-memory", "version": "0.1.0"}, "capabilities": map[string]any{"tools": map[string]any{}}}}
+		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "jev-mem", "version": "0.1.0"}, "capabilities": map[string]any{"tools": map[string]any{}}}}
 	case "tools/list":
 		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"tools": mcpTools()}}
 	case "tools/call":
@@ -247,13 +285,13 @@ func handleRPC(svc *gmem.Service, req rpcRequest) rpcResponse {
 	}
 }
 
-func callTool(svc *gmem.Service, raw json.RawMessage) any {
+func callTool(svc *jevmem.Service, raw json.RawMessage) any {
 	var in struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
 	if err := json.Unmarshal(raw, &in); err != nil {
-		return toolText(gmem.Fail[any]("invalid_request", err.Error(), "", nil))
+		return toolText(jevmem.Fail[any]("invalid_request", err.Error(), "", nil))
 	}
 	switch in.Name {
 	case "save_memory":
@@ -263,11 +301,11 @@ func callTool(svc *gmem.Service, raw json.RawMessage) any {
 	case "search_memory":
 		return runToolViaSubprocess("search", in.Arguments)
 	case "retry_push":
-		var req gmem.RetryPushRequest
+		var req jevmem.RetryPushRequest
 		_ = json.Unmarshal(in.Arguments, &req)
 		return toolText(svc.RetryPush(context.Background(), req))
 	default:
-		return toolText(gmem.Fail[any]("unknown_tool", "unknown tool", "", nil))
+		return toolText(jevmem.Fail[any]("unknown_tool", "unknown tool", "", nil))
 	}
 }
 
@@ -279,7 +317,7 @@ func callTool(svc *gmem.Service, raw json.RawMessage) any {
 func runToolViaSubprocess(sub string, args json.RawMessage) any {
 	exe, err := os.Executable()
 	if err != nil {
-		return toolText(gmem.Fail[any]("server_error", err.Error(), "", nil))
+		return toolText(jevmem.Fail[any]("server_error", err.Error(), "", nil))
 	}
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
@@ -296,7 +334,7 @@ func runToolViaSubprocess(sub string, args json.RawMessage) any {
 		if runErr != nil {
 			msg = runErr.Error()
 		}
-		return toolText(gmem.Fail[any]("server_error", msg, "", nil))
+		return toolText(jevmem.Fail[any]("server_error", msg, "", nil))
 	}
 	// The child already emits the canonical Response JSON; relay it verbatim as
 	// the tool's text content.
@@ -329,6 +367,7 @@ func schema() map[string]any {
 			"sync":       map[string]any{"output": []string{"json", "text"}},
 			"status":     map[string]any{"output": []string{"json", "text"}},
 			"retry-push": map[string]any{"output": []string{"json", "text"}},
+			"jev-check":  map[string]any{"output": []string{"json"}},
 			"schema":     map[string]any{"output": []string{"json"}},
 			"mcp":        map[string]any{"transport": "stdio"},
 		},
@@ -347,7 +386,7 @@ func writeResponse(stdout io.Writer, output string, v any) error {
 	return err
 }
 
-func writeSearchResponse(stdout io.Writer, output string, resp gmem.Response[gmem.SearchData]) error {
+func writeSearchResponse(stdout io.Writer, output string, resp jevmem.Response[jevmem.SearchData]) error {
 	if output == "ndjson" {
 		if !resp.OK {
 			return json.NewEncoder(stdout).Encode(resp)

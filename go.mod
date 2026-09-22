@@ -1,4 +1,4 @@
-module github.com/tomohiro-owada/gmem
+module github.com/tomohiro-owada/jev-mem
 
 go 1.26.3
 

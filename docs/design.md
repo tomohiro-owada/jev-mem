@@ -142,8 +142,8 @@ SQLite を Git 管理下に置くと毎回 DB 全体の差分が発生しやす�
 
 ```json
 {
-  "git_dir": "/Users/towada/Library/Application Support/git-mcp-memory/repo",
-  "remote_url": "git@github.com:tomohiro-owada/gmem-memory.git",
+  "git_dir": "/Users/towada/Library/Application Support/jev-mem/repo",
+  "remote_url": "git@github.com:tomohiro-owada/jev-mem-memory.git",
   "embedding_provider": "builtin_onnx",
   "embedding_model": "multilingual-e5-small",
   "embedding_model_repo": "intfloat/multilingual-e5-small",
@@ -175,17 +175,17 @@ Git remote は作成済みで、SSH 認証も設定済みであることを前�
 
 推奨デフォルト:
 
-- macOS: `~/Library/Application Support/git-mcp-memory/repo`
-- Windows: `%LOCALAPPDATA%\git-mcp-memory\repo`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/git-mcp-memory/repo`
+- macOS: `~/Library/Application Support/jev-mem/repo`
+- Windows: `%LOCALAPPDATA%\jev-mem\repo`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/jev-mem/repo`
 
 SQLite は Git リポジトリとは別に、同じアプリケーションデータ領域配下へ置く。
 
 推奨デフォルト:
 
-- macOS: `~/Library/Application Support/git-mcp-memory/index.sqlite`
-- Windows: `%LOCALAPPDATA%\git-mcp-memory\index.sqlite`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/git-mcp-memory/index.sqlite`
+- macOS: `~/Library/Application Support/jev-mem/index.sqlite`
+- Windows: `%LOCALAPPDATA%\jev-mem\index.sqlite`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/jev-mem/index.sqlite`
 
 ### 6. SQLite Index
 
@@ -229,9 +229,9 @@ Ollama のような外部 API サーバーを必須にしない。Go MCP サー�
 - language: multilingual
 - model source: Hugging Face Hub
 - model cache:
-  - macOS: `~/Library/Application Support/git-mcp-memory/models/`
-  - Windows: `%LOCALAPPDATA%\git-mcp-memory\models\`
-  - Linux: `${XDG_DATA_HOME:-~/.local/share}/git-mcp-memory/models/`
+  - macOS: `~/Library/Application Support/jev-mem/models/`
+  - Windows: `%LOCALAPPDATA%\jev-mem\models\`
+  - Linux: `${XDG_DATA_HOME:-~/.local/share}/jev-mem/models/`
 
 `intfloat/multilingual-e5-small` に固定する理由:
 
@@ -449,17 +449,17 @@ CLI は AI agent からの利用を第一級に扱う。人間向けの短いフ
 想定コマンド:
 
 ```text
-git-mcp-memory mcp
-git-mcp-memory save --input json --output json
-git-mcp-memory save --workspace /path/to/project --title "..." --content "..." --output json
-git-mcp-memory save --workspace /path/to/project --title "..." --file memory.md --output json
-git-mcp-memory search --input json --output json
-git-mcp-memory search "query" --workspace /path/to/project --limit 10 --output json
-git-mcp-memory search "query" --all --limit 10 --output json
-git-mcp-memory sync --output json
-git-mcp-memory status --output json
-git-mcp-memory retry-push --output json
-git-mcp-memory schema --output json
+jev-mem mcp
+jev-mem save --input json --output json
+jev-mem save --workspace /path/to/project --title "..." --content "..." --output json
+jev-mem save --workspace /path/to/project --title "..." --file memory.md --output json
+jev-mem search --input json --output json
+jev-mem search "query" --workspace /path/to/project --limit 10 --output json
+jev-mem search "query" --all --limit 10 --output json
+jev-mem sync --output json
+jev-mem status --output json
+jev-mem retry-push --output json
+jev-mem schema --output json
 ```
 
 CLI のデフォルト出力は JSON とする。人間向けの text 出力は `--output text` で明示指定する。

@@ -1,4 +1,4 @@
-package gmem
+package jevmem
 
 import (
 	"encoding/json"
@@ -41,18 +41,18 @@ func DefaultConfigPath() string {
 	switch runtime.GOOS {
 	case "darwin":
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "Library", "Application Support", "git-mcp-memory", "config.json")
+		return filepath.Join(home, "Library", "Application Support", "jev-mem", "config.json")
 	case "windows":
 		if v := os.Getenv("LOCALAPPDATA"); v != "" {
-			return filepath.Join(v, "git-mcp-memory", "config.json")
+			return filepath.Join(v, "jev-mem", "config.json")
 		}
 	default:
 		if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-			return filepath.Join(v, "git-mcp-memory", "config.json")
+			return filepath.Join(v, "jev-mem", "config.json")
 		}
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "git-mcp-memory", "config.json")
+	return filepath.Join(home, ".config", "jev-mem", "config.json")
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -138,16 +138,16 @@ func defaultDataDir() string {
 	switch runtime.GOOS {
 	case "darwin":
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "Library", "Application Support", "git-mcp-memory")
+		return filepath.Join(home, "Library", "Application Support", "jev-mem")
 	case "windows":
 		if v := os.Getenv("LOCALAPPDATA"); v != "" {
-			return filepath.Join(v, "git-mcp-memory")
+			return filepath.Join(v, "jev-mem")
 		}
 	default:
 		if v := os.Getenv("XDG_DATA_HOME"); v != "" {
-			return filepath.Join(v, "git-mcp-memory")
+			return filepath.Join(v, "jev-mem")
 		}
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "git-mcp-memory")
+	return filepath.Join(home, ".local", "share", "jev-mem")
 }

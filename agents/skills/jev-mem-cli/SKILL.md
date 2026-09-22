@@ -1,13 +1,13 @@
 ---
-name: git-mcp-memory-cli
-description: Use git-mcp-memory from the command line to save, search, sync, inspect, and recover Git-backed AI memories. Trigger this skill when a user asks to use the git-mcp-memory CLI, persist or retrieve agent memory without MCP tools, verify memory repository state, handle push failures, run retry-push, or script JSON-first memory operations.
+name: jev-mem-cli
+description: Use jev-mem from the command line to save, search, sync, inspect, and recover Git-backed AI memories. Trigger this skill when a user asks to use the jev-mem CLI, persist or retrieve agent memory without MCP tools, verify memory repository state, handle push failures, run retry-push, or script JSON-first memory operations.
 ---
 
-# git-mcp-memory CLI
+# jev-mem CLI
 
 ## Core Rules
 
-- Prefer `/Users/towada/.local/bin/git-mcp-memory` when it exists; otherwise use `git-mcp-memory` from `PATH`.
+- Prefer `/Users/towada/.local/bin/jev-mem` when it exists; otherwise use `jev-mem` from `PATH`.
 - Use `--output json` unless the user explicitly asks for text or NDJSON.
 - Do not use interactive prompts. If required input is missing, fail and report the structured error.
 - Do not save secrets, API keys, private keys, tokens, personal information, customer names, or company names unless the local config explicitly permits the configurable category.
@@ -19,22 +19,22 @@ description: Use git-mcp-memory from the command line to save, search, sync, ins
 Use these commands for common tasks:
 
 ```bash
-git-mcp-memory status --output json
-git-mcp-memory schema --output json
-git-mcp-memory save --workspace "$PWD" --title "Title" --content "Markdown body" --output json
-git-mcp-memory save --workspace "$PWD" --title "Title" --content "Markdown body" --dry-run --output json
-git-mcp-memory search "query" --workspace "$PWD" --limit 5 --output json
-git-mcp-memory search "query" --all --limit 10 --output json
-git-mcp-memory sync --output json
-git-mcp-memory retry-push --output json
-git-mcp-memory retry-push --dry-run --output json
+jev-mem status --output json
+jev-mem schema --output json
+jev-mem save --workspace "$PWD" --title "Title" --content "Markdown body" --output json
+jev-mem save --workspace "$PWD" --title "Title" --content "Markdown body" --dry-run --output json
+jev-mem search "query" --workspace "$PWD" --limit 5 --output json
+jev-mem search "query" --all --limit 10 --output json
+jev-mem sync --output json
+jev-mem retry-push --output json
+jev-mem retry-push --dry-run --output json
 ```
 
 Use `--input json` when constructing requests programmatically:
 
 ```bash
 printf '%s\n' '{"current_workspace_path":"/path/to/project","title":"Title","content":"Markdown body"}' \
-  | git-mcp-memory save --input json --output json
+  | jev-mem save --input json --output json
 ```
 
 ## Save Workflow
@@ -53,25 +53,25 @@ printf '%s\n' '{"current_workspace_path":"/path/to/project","title":"Title","con
 Project search:
 
 ```bash
-git-mcp-memory search "query" --workspace "/path/to/project" --limit 5 --output json
+jev-mem search "query" --workspace "/path/to/project" --limit 5 --output json
 ```
 
 Cross-project search:
 
 ```bash
-git-mcp-memory search "query" --all --limit 10 --output json
+jev-mem search "query" --all --limit 10 --output json
 ```
 
 Reduce output only when needed:
 
 ```bash
-git-mcp-memory search "query" --all --fields title,path --snippet-chars 300 --output json
+jev-mem search "query" --all --fields title,path --snippet-chars 300 --output json
 ```
 
 If search returns `sync_failed_local_results`, report that results are based on local repository state and run:
 
 ```bash
-git-mcp-memory retry-push --output json
+jev-mem retry-push --output json
 ```
 
 ## Push Failure Recovery
@@ -82,8 +82,8 @@ If `save` returns a warning like `push_failed`:
 2. Run:
 
 ```bash
-git-mcp-memory retry-push --dry-run --output json
-git-mcp-memory retry-push --output json
+jev-mem retry-push --dry-run --output json
+jev-mem retry-push --output json
 ```
 
 3. If `retry-push` still fails, report:

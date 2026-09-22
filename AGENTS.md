@@ -1,4 +1,4 @@
-# git-mcp-memory Agent Guide
+# jev-mem Agent Guide
 
 ## CLI Usage
 

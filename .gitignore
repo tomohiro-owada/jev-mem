@@ -3,3 +3,6 @@
 /.tmp/
 *.sqlite
 *.db
+.env
+.env.*
+!.env.example

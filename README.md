@@ -1,14 +1,14 @@
-# git-mcp-memory
+# jev-mem
 
 Git-backed long-term memory for AI agents, served through MCP and a JSON-first CLI.
 
 <p align="center">
-  <img src="docs/assets/header.svg" alt="git-mcp-memory header illustration" width="100%">
+  <img src="docs/assets/header.svg" alt="jev-mem header illustration" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/tomohiro-owada/gmem/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tomohiro-owada/gmem/ci.yml?branch=main&style=flat-square&label=ci"></a>
-  <a href="https://github.com/tomohiro-owada/gmem/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/tomohiro-owada/gmem?style=flat-square"></a>
+  <a href="https://github.com/tomohiro-owada/jev-mem/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tomohiro-owada/jev-mem/ci.yml?branch=main&style=flat-square&label=ci"></a>
+  <a href="https://github.com/tomohiro-owada/jev-mem/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/tomohiro-owada/jev-mem?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/go-1.24%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-0f766e?style=flat-square">
   <img alt="Embeddings" src="https://img.shields.io/badge/embeddings-local%20ONNX-2563eb?style=flat-square">
@@ -27,7 +27,7 @@ Git-backed long-term memory for AI agents, served through MCP and a JSON-first C
   <a href="#日本語">日本語</a>
 </p>
 
-`git-mcp-memory` stores the source of truth as Markdown files in a Git repository, while using SQLite and local embeddings as a rebuildable search index. It is designed for local AI-agent workflows where memory should be readable by humans, reviewable with Git history, and searchable by meaning.
+`jev-mem` stores the source of truth as Markdown files in a Git repository, while using SQLite and local embeddings as a rebuildable search index. It is designed for local AI-agent workflows where memory should be readable by humans, reviewable with Git history, and searchable by meaning.
 
 English | [日本語](#日本語)
 
@@ -59,14 +59,14 @@ See [docs/design.md](docs/design.md) for the design notes and tradeoffs.
 
 ## Architecture
 
-![git-mcp-memory architecture diagram](docs/assets/architecture.svg)
+![jev-mem architecture diagram](docs/assets/architecture.svg)
 
 ```text
 AI client / CLI
   |
   | save_memory / search_memory
   v
-git-mcp-memory
+jev-mem
   |
   | Git pull / commit / push
   | Markdown source files
@@ -125,33 +125,33 @@ Download a prebuilt archive from the latest GitHub Release.
 macOS arm64:
 
 ```bash
-curl -L -O https://github.com/tomohiro-owada/gmem/releases/latest/download/git-mcp-memory-darwin-arm64.tar.gz
-tar -xzf git-mcp-memory-darwin-arm64.tar.gz
+curl -L -O https://github.com/tomohiro-owada/jev-mem/releases/latest/download/jev-mem-darwin-arm64.tar.gz
+tar -xzf jev-mem-darwin-arm64.tar.gz
 mkdir -p ~/.local/bin
-mv git-mcp-memory-darwin-arm64 ~/.local/bin/git-mcp-memory
-chmod +x ~/.local/bin/git-mcp-memory
+mv jev-mem-darwin-arm64 ~/.local/bin/jev-mem
+chmod +x ~/.local/bin/jev-mem
 ```
 
 Linux amd64:
 
 ```bash
-curl -L -O https://github.com/tomohiro-owada/gmem/releases/latest/download/git-mcp-memory-linux-amd64.tar.gz
-tar -xzf git-mcp-memory-linux-amd64.tar.gz
+curl -L -O https://github.com/tomohiro-owada/jev-mem/releases/latest/download/jev-mem-linux-amd64.tar.gz
+tar -xzf jev-mem-linux-amd64.tar.gz
 mkdir -p ~/.local/bin
-mv git-mcp-memory-linux-amd64 ~/.local/bin/git-mcp-memory
-chmod +x ~/.local/bin/git-mcp-memory
+mv jev-mem-linux-amd64 ~/.local/bin/jev-mem
+chmod +x ~/.local/bin/jev-mem
 ```
 
 Verify the install:
 
 ```bash
-git-mcp-memory schema --output json
+jev-mem schema --output json
 ```
 
 Release artifacts include a `.tar.gz` archive and a `.sha256` checksum file. Source builds are still supported:
 
 ```bash
-go build -ldflags '-s -w' -o ~/.local/bin/git-mcp-memory ./cmd/git-mcp-memory
+go build -ldflags '-s -w' -o ~/.local/bin/jev-mem ./cmd/jev-mem
 ```
 
 ## Configuration
@@ -160,17 +160,17 @@ Create a JSON config file at the default location for your OS.
 
 Default config path:
 
-- macOS: `~/Library/Application Support/git-mcp-memory/config.json`
-- Windows: `%LOCALAPPDATA%\git-mcp-memory\config.json`
-- Linux: `${XDG_CONFIG_HOME:-~/.config}/git-mcp-memory/config.json`
+- macOS: `~/Library/Application Support/jev-mem/config.json`
+- Windows: `%LOCALAPPDATA%\jev-mem\config.json`
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/jev-mem/config.json`
 
 Example:
 
 ```json
 {
-  "git_dir": "/Users/alice/Library/Application Support/git-mcp-memory/repo",
+  "git_dir": "/Users/alice/Library/Application Support/jev-mem/repo",
   "remote_url": "git@github.com:alice/my-memory-repo.git",
-  "index_path": "/Users/alice/Library/Application Support/git-mcp-memory/index.sqlite",
+  "index_path": "/Users/alice/Library/Application Support/jev-mem/index.sqlite",
   "embedding_provider": "builtin_onnx",
   "embedding_model": "multilingual-e5-small",
   "embedding_model_repo": "intfloat/multilingual-e5-small",
@@ -202,14 +202,14 @@ Notes:
 Run the MCP server:
 
 ```bash
-git-mcp-memory mcp
+jev-mem mcp
 ```
 
 Example Codex-style MCP configuration:
 
 ```toml
-[mcp_servers.gmem]
-command = "/Users/alice/.local/bin/git-mcp-memory"
+[mcp_servers.jev-mem]
+command = "/Users/alice/.local/bin/jev-mem"
 args = ["mcp"]
 startup_timeout_sec = 120
 ```
@@ -272,13 +272,13 @@ The CLI is designed for AI agents first. JSON output is the default.
 Show schema:
 
 ```bash
-git-mcp-memory schema --output json
+jev-mem schema --output json
 ```
 
 Check status:
 
 ```bash
-git-mcp-memory status --output json
+jev-mem status --output json
 ```
 
 On a fresh machine, `assets_ready` is usually `false` until the first embedding model setup completes. The first `save`, `search`, or `sync` command downloads the ONNX model, tokenizer, and ONNX Runtime into the local application data directory, so it can take longer than normal. Agents can check these fields before a real operation:
@@ -297,7 +297,7 @@ After the files are cached, the same fields become `true` and later operations d
 Save a memory:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace /path/to/project \
   --title "Decision title" \
   --content "Markdown body" \
@@ -307,7 +307,7 @@ git-mcp-memory save \
 Dry run:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace /path/to/project \
   --title "Dry run" \
   --content "Validate and embed only." \
@@ -318,7 +318,7 @@ git-mcp-memory save \
 Search within the current project:
 
 ```bash
-git-mcp-memory search "local embeddings" \
+jev-mem search "local embeddings" \
   --workspace /path/to/project \
   --limit 5 \
   --output json
@@ -327,25 +327,25 @@ git-mcp-memory search "local embeddings" \
 Search all projects:
 
 ```bash
-git-mcp-memory search "incident summary" --all --limit 10 --output json
+jev-mem search "incident summary" --all --limit 10 --output json
 ```
 
 Return one JSON object per result:
 
 ```bash
-git-mcp-memory search "push failure" --all --output ndjson
+jev-mem search "push failure" --all --output ndjson
 ```
 
 Rebuild/synchronize local state:
 
 ```bash
-git-mcp-memory sync --output json
+jev-mem sync --output json
 ```
 
 Retry failed pushes:
 
 ```bash
-git-mcp-memory retry-push --output json
+jev-mem retry-push --output json
 ```
 
 ## Agent Skill
@@ -353,10 +353,10 @@ git-mcp-memory retry-push --output json
 This repository includes a Codex-style agent skill for CLI operation:
 
 ```text
-agents/skills/git-mcp-memory-cli/
+agents/skills/jev-mem-cli/
 ```
 
-Use it when an agent needs to call `git-mcp-memory` through the CLI rather than through MCP tools. The skill covers JSON-first command usage, dry-run saves, project and cross-project search, status checks, and push-failure recovery.
+Use it when an agent needs to call `jev-mem` through the CLI rather than through MCP tools. The skill covers JSON-first command usage, dry-run saves, project and cross-project search, status checks, and push-failure recovery.
 
 ## Safety Model
 
@@ -417,13 +417,13 @@ go test ./...
 Build:
 
 ```bash
-go build -o ./bin/git-mcp-memory ./cmd/git-mcp-memory
+go build -o ./bin/jev-mem ./cmd/jev-mem
 ```
 
 Run a local smoke test:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace "$PWD" \
   --title "Smoke test" \
   --content "This is a local smoke test." \
@@ -446,15 +446,15 @@ The release workflow builds native artifacts on GitHub-hosted Linux and macOS ru
 
 ## 日本語
 
-English は [こちら](#git-mcp-memory)。
+English は [こちら](#jev-mem)。
 
-### git-mcp-memory
+### jev-mem
 
-![git-mcp-memory ヘッダー挿絵](docs/assets/header.svg)
+![jev-mem ヘッダー挿絵](docs/assets/header.svg)
 
 AI agent の長期記憶を Git 管理された Markdown として保存し、MCP と JSON-first な CLI から読み書きするためのローカルツールです。
 
-`git-mcp-memory` は、記憶の正本を Git リポジトリ内の Markdown に置き、SQLite とローカル embedding を再生成可能な検索インデックスとして使います。人間が読めること、Git の履歴で追えること、意味検索できることを同時に満たす設計です。
+`jev-mem` は、記憶の正本を Git リポジトリ内の Markdown に置き、SQLite とローカル embedding を再生成可能な検索インデックスとして使います。人間が読めること、Git の履歴で追えること、意味検索できることを同時に満たす設計です。
 
 ## 特徴
 
@@ -484,14 +484,14 @@ AI agent の長期記憶を Git 管理された Markdown として保存し、MC
 
 ## 構成
 
-![git-mcp-memory 構成図](docs/assets/architecture.svg)
+![jev-mem 構成図](docs/assets/architecture.svg)
 
 ```text
 AI client / CLI
   |
   | save_memory / search_memory
   v
-git-mcp-memory
+jev-mem
   |
   | Git pull / commit / push
   | Markdown source files
@@ -533,50 +533,50 @@ memory-repo/
 macOS arm64:
 
 ```bash
-curl -L -O https://github.com/tomohiro-owada/gmem/releases/latest/download/git-mcp-memory-darwin-arm64.tar.gz
-tar -xzf git-mcp-memory-darwin-arm64.tar.gz
+curl -L -O https://github.com/tomohiro-owada/jev-mem/releases/latest/download/jev-mem-darwin-arm64.tar.gz
+tar -xzf jev-mem-darwin-arm64.tar.gz
 mkdir -p ~/.local/bin
-mv git-mcp-memory-darwin-arm64 ~/.local/bin/git-mcp-memory
-chmod +x ~/.local/bin/git-mcp-memory
+mv jev-mem-darwin-arm64 ~/.local/bin/jev-mem
+chmod +x ~/.local/bin/jev-mem
 ```
 
 Linux amd64:
 
 ```bash
-curl -L -O https://github.com/tomohiro-owada/gmem/releases/latest/download/git-mcp-memory-linux-amd64.tar.gz
-tar -xzf git-mcp-memory-linux-amd64.tar.gz
+curl -L -O https://github.com/tomohiro-owada/jev-mem/releases/latest/download/jev-mem-linux-amd64.tar.gz
+tar -xzf jev-mem-linux-amd64.tar.gz
 mkdir -p ~/.local/bin
-mv git-mcp-memory-linux-amd64 ~/.local/bin/git-mcp-memory
-chmod +x ~/.local/bin/git-mcp-memory
+mv jev-mem-linux-amd64 ~/.local/bin/jev-mem
+chmod +x ~/.local/bin/jev-mem
 ```
 
 確認:
 
 ```bash
-git-mcp-memory schema --output json
+jev-mem schema --output json
 ```
 
 release artifact には `.tar.gz` archive と `.sha256` checksum を含めます。source からの build も可能です。
 
 ```bash
-go build -ldflags '-s -w' -o ~/.local/bin/git-mcp-memory ./cmd/git-mcp-memory
+go build -ldflags '-s -w' -o ~/.local/bin/jev-mem ./cmd/jev-mem
 ```
 
 ## 設定
 
 OS ごとの標準 config path:
 
-- macOS: `~/Library/Application Support/git-mcp-memory/config.json`
-- Windows: `%LOCALAPPDATA%\git-mcp-memory\config.json`
-- Linux: `${XDG_CONFIG_HOME:-~/.config}/git-mcp-memory/config.json`
+- macOS: `~/Library/Application Support/jev-mem/config.json`
+- Windows: `%LOCALAPPDATA%\jev-mem\config.json`
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/jev-mem/config.json`
 
 設定例:
 
 ```json
 {
-  "git_dir": "/Users/alice/Library/Application Support/git-mcp-memory/repo",
+  "git_dir": "/Users/alice/Library/Application Support/jev-mem/repo",
   "remote_url": "git@github.com:alice/my-memory-repo.git",
-  "index_path": "/Users/alice/Library/Application Support/git-mcp-memory/index.sqlite",
+  "index_path": "/Users/alice/Library/Application Support/jev-mem/index.sqlite",
   "embedding_provider": "builtin_onnx",
   "embedding_model": "multilingual-e5-small",
   "embedding_model_repo": "intfloat/multilingual-e5-small",
@@ -608,14 +608,14 @@ OS ごとの標準 config path:
 MCP server 起動:
 
 ```bash
-git-mcp-memory mcp
+jev-mem mcp
 ```
 
 MCP client 設定例:
 
 ```toml
-[mcp_servers.gmem]
-command = "/Users/alice/.local/bin/git-mcp-memory"
+[mcp_servers.jev-mem]
+command = "/Users/alice/.local/bin/jev-mem"
 args = ["mcp"]
 startup_timeout_sec = 120
 ```
@@ -637,13 +637,13 @@ startup_timeout_sec = 120
 schema:
 
 ```bash
-git-mcp-memory schema --output json
+jev-mem schema --output json
 ```
 
 status:
 
 ```bash
-git-mcp-memory status --output json
+jev-mem status --output json
 ```
 
 初回利用前は、たいてい `assets_ready` が `false` です。最初の `save`、`search`、`sync` で ONNX model、tokenizer、ONNX Runtime を local application data directory へダウンロードするため、通常より時間がかかります。AI agent は本番操作の前に次の field を見れば、初回 setup 中かどうかを判断できます。
@@ -662,7 +662,7 @@ cache 済みになるとこれらは `true` になり、以降の操作では再
 保存:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace /path/to/project \
   --title "Decision title" \
   --content "Markdown body" \
@@ -672,7 +672,7 @@ git-mcp-memory save \
 dry-run:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace /path/to/project \
   --title "Dry run" \
   --content "Validate and embed only." \
@@ -683,7 +683,7 @@ git-mcp-memory save \
 project 検索:
 
 ```bash
-git-mcp-memory search "local embeddings" \
+jev-mem search "local embeddings" \
   --workspace /path/to/project \
   --limit 5 \
   --output json
@@ -692,19 +692,19 @@ git-mcp-memory search "local embeddings" \
 全 project 横断検索:
 
 ```bash
-git-mcp-memory search "incident summary" --all --limit 10 --output json
+jev-mem search "incident summary" --all --limit 10 --output json
 ```
 
 同期と再 index:
 
 ```bash
-git-mcp-memory sync --output json
+jev-mem sync --output json
 ```
 
 push 再試行:
 
 ```bash
-git-mcp-memory retry-push --output json
+jev-mem retry-push --output json
 ```
 
 ## Agent Skill
@@ -712,10 +712,10 @@ git-mcp-memory retry-push --output json
 この repository には CLI 操作用の Codex-style agent skill を同梱しています。
 
 ```text
-agents/skills/git-mcp-memory-cli/
+agents/skills/jev-mem-cli/
 ```
 
-MCP tool ではなく CLI から `git-mcp-memory` を使う agent 向けです。JSON-first な command 利用、dry-run 保存、project 検索、全 project 横断検索、status 確認、push 失敗時の復旧手順を含みます。
+MCP tool ではなく CLI から `jev-mem` を使う agent 向けです。JSON-first な command 利用、dry-run 保存、project 検索、全 project 横断検索、status 確認、push 失敗時の復旧手順を含みます。
 
 ## セキュリティ
 
@@ -763,13 +763,13 @@ go test ./...
 build:
 
 ```bash
-go build -o ./bin/git-mcp-memory ./cmd/git-mcp-memory
+go build -o ./bin/jev-mem ./cmd/jev-mem
 ```
 
 smoke test:
 
 ```bash
-git-mcp-memory save \
+jev-mem save \
   --workspace "$PWD" \
   --title "Smoke test" \
   --content "This is a local smoke test." \

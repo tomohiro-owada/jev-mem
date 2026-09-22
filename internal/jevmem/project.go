@@ -1,4 +1,4 @@
-package gmem
+package jevmem
 
 import (
 	"crypto/sha1"
