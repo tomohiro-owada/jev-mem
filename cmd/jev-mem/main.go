@@ -39,6 +39,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runStatus(args[1:], stdout)
 	case "jev-check":
 		return runJevCheck(stdout)
+	case "fingerprint":
+		return runFingerprint(args[1:], stdin, stdout)
 	case "schema":
 		return json.NewEncoder(stdout).Encode(schema())
 	case "mcp":
@@ -46,6 +48,34 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func runFingerprint(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if opts["input"] != "json" {
+		return fmt.Errorf("fingerprint requires --input json")
+	}
+	var decision jevmem.DecisionInput
+	if err := json.NewDecoder(stdin).Decode(&decision); err != nil {
+		return err
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	client, err := jevmem.NewJevClientFromEnvironment(workDir)
+	if err != nil {
+		return err
+	}
+	extractor := &jevmem.JevFingerprintExtractor{Evaluator: client, BatchSize: 25}
+	fingerprint, err := extractor.Extract(context.Background(), decision)
+	if err != nil {
+		return err
+	}
+	return writeResponse(stdout, opts["output"], jevmem.OK(fingerprint))
 }
 
 func runJevCheck(stdout io.Writer) error {
@@ -368,8 +398,12 @@ func schema() map[string]any {
 			"status":     map[string]any{"output": []string{"json", "text"}},
 			"retry-push": map[string]any{"output": []string{"json", "text"}},
 			"jev-check":  map[string]any{"output": []string{"json"}},
-			"schema":     map[string]any{"output": []string{"json"}},
-			"mcp":        map[string]any{"transport": "stdio"},
+			"fingerprint": map[string]any{
+				"input":  []string{"json"},
+				"output": []string{"json", "text"},
+			},
+			"schema": map[string]any{"output": []string{"json"}},
+			"mcp":    map[string]any{"transport": "stdio"},
 		},
 	}
 }

@@ -69,14 +69,15 @@ type Config struct {
 }
 
 type Memory struct {
-	ProjectID string    `json:"project_id"`
-	Path      string    `json:"path"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	Embedding []float32 `json:"-"`
-	Hash      string    `json:"content_hash"`
-	CreatedAt time.Time `json:"created_at"`
-	IndexedAt time.Time `json:"indexed_at"`
+	ProjectID   string       `json:"project_id"`
+	Path        string       `json:"path"`
+	Title       string       `json:"title"`
+	Content     string       `json:"content"`
+	Embedding   []float32    `json:"-"`
+	Fingerprint *Fingerprint `json:"fingerprint,omitempty"`
+	Hash        string       `json:"content_hash"`
+	CreatedAt   time.Time    `json:"created_at"`
+	IndexedAt   time.Time    `json:"indexed_at"`
 }
 
 type SaveRequest struct {
@@ -115,6 +116,14 @@ type SearchResult struct {
 
 type SearchData struct {
 	Results []SearchResult `json:"results"`
+}
+
+type FingerprintSearchResult struct {
+	ProjectID  string                `json:"project_id"`
+	Path       string                `json:"path"`
+	Title      string                `json:"title"`
+	Content    string                `json:"content"`
+	Similarity FingerprintSimilarity `json:"similarity"`
 }
 
 type RetryPushRequest struct {
