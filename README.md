@@ -377,6 +377,14 @@ jev-mem search-analogies --input json --output json <<'JSON'
 JSON
 ```
 
+Render any returned fingerprint as a human-facing 10x10 SVG (the SVG is never
+used as search input):
+
+```bash
+jq '.data.query_fingerprint' search-result.json |
+  jev-mem heatmap --input json --output svg > fingerprint.svg
+```
+
 Rebuild/synchronize local state:
 
 ```bash
@@ -774,6 +782,14 @@ jev-mem search-analogies --input json --output json <<'JSON'
   "limit": 10
 }
 JSON
+```
+
+返されたFingerprintは、人間向けの10×10 SVGへ変換できます。SVG自体は
+検索入力には使いません。
+
+```bash
+jq '.data.query_fingerprint' search-result.json |
+  jev-mem heatmap --input json --output svg > fingerprint.svg
 ```
 
 同期と再 index:

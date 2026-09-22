@@ -76,3 +76,22 @@ func TestValidateFingerprintRejectsValueForUnknown(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestCompareFingerprintsDiscountsMutuallySparseFingerprints(t *testing.T) {
+	left := Fingerprint{SchemaVersion: 1, Values: map[string]AttributeValue{
+		"optionality_priority": fpValue(100, 1),
+	}}
+	right := Fingerprint{SchemaVersion: 1, Values: map[string]AttributeValue{
+		"optionality_priority": fpValue(100, 1),
+	}}
+	result, err := CompareFingerprints(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Score != 1 {
+		t.Fatalf("raw similarity = %f, want 1", result.Score)
+	}
+	if result.Coverage != 0.01 {
+		t.Fatalf("coverage = %f, want 0.01", result.Coverage)
+	}
+}

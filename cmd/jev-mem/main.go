@@ -45,6 +45,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runJevCheck(stdout)
 	case "fingerprint":
 		return runFingerprint(args[1:], stdin, stdout)
+	case "heatmap":
+		return runHeatmap(args[1:], stdin, stdout)
 	case "schema":
 		return json.NewEncoder(stdout).Encode(schema())
 	case "mcp":
@@ -52,6 +54,29 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func runHeatmap(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, _, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if opts["input"] != "json" {
+		return fmt.Errorf("heatmap requires --input json")
+	}
+	if output := opts["output"]; output != "" && output != "svg" {
+		return fmt.Errorf("heatmap only supports --output svg")
+	}
+	var fingerprint jevmem.Fingerprint
+	if err := json.NewDecoder(stdin).Decode(&fingerprint); err != nil {
+		return err
+	}
+	svg, err := jevmem.RenderFingerprintSVG(fingerprint)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, svg)
+	return err
 }
 
 func newDecisionService() (*jevmem.Service, func(), error) {
@@ -479,8 +504,9 @@ func schema() map[string]any {
 				"input":  []string{"json"},
 				"output": []string{"json", "text"},
 			},
-			"schema": map[string]any{"output": []string{"json"}},
-			"mcp":    map[string]any{"transport": "stdio"},
+			"heatmap": map[string]any{"input": []string{"json"}, "output": []string{"svg"}},
+			"schema":  map[string]any{"output": []string{"json"}},
+			"mcp":     map[string]any{"transport": "stdio"},
 		},
 	}
 }

@@ -248,7 +248,6 @@ func CompareFingerprints(left, right Fingerprint) (FingerprintSimilarity, error)
 		weight                  float64
 		confidence              float64
 		shared                  int
-		knownUnion              int
 		total                   int
 	}
 	acc := map[AttributeTarget]*accumulator{}
@@ -263,9 +262,6 @@ func CompareFingerprints(left, right Fingerprint) (FingerprintSimilarity, error)
 		rv, rok := right.Values[def.ID]
 		leftKnown := lok && lv.Applicability == Applicable && lv.Value != nil
 		rightKnown := rok && rv.Applicability == Applicable && rv.Value != nil
-		if leftKnown || rightKnown {
-			a.knownUnion++
-		}
 		if !leftKnown || !rightKnown {
 			continue
 		}
@@ -295,10 +291,8 @@ func CompareFingerprints(left, right Fingerprint) (FingerprintSimilarity, error)
 		Warnings:      []string{},
 	}
 	var weightedScore, usedLayerWeight, confidenceSum float64
-	var knownUnion int
 	for target, configuredWeight := range layerWeights {
 		a := acc[target]
-		knownUnion += a.knownUnion
 		if a.total > 0 {
 			result.LayerCoverage[string(target)] = float64(a.shared) / float64(a.total)
 		}
@@ -317,9 +311,7 @@ func CompareFingerprints(left, right Fingerprint) (FingerprintSimilarity, error)
 		return result, errors.New("fingerprints have no comparable attributes with positive confidence")
 	}
 	result.Score = weightedScore / usedLayerWeight
-	if knownUnion > 0 {
-		result.Coverage = float64(result.SharedAttributeCount) / float64(knownUnion)
-	}
+	result.Coverage = float64(result.SharedAttributeCount) / float64(len(defs))
 	result.EffectiveConfidence = confidenceSum / float64(result.SharedAttributeCount)
 
 	sort.Slice(comparisons, func(i, j int) bool {

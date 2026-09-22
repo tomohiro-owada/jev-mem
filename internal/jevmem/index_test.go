@@ -89,23 +89,16 @@ func TestIndexSearchAnalogiesCanPreferCrossDomainStructure(t *testing.T) {
 	}
 	defer idx.Close()
 
-	query := Fingerprint{SchemaVersion: 1, Values: map[string]AttributeValue{
-		"state_uncertainty":             fpValue(80, 1),
-		"future_option_foreclosure":     fpValue(90, 1),
-		"optionality_priority":          fpValue(100, 1),
-		"reversibility_priority":        fpValue(90, 1),
-		"precommitment_learning_extent": fpValue(100, 1),
-		"retained_option_extent":        fpValue(100, 1),
-	}}
+	fullFingerprint := func(value float64) Fingerprint {
+		values := make(map[string]AttributeValue, len(FingerprintAttributesV1))
+		for _, definition := range FingerprintAttributesV1 {
+			values[definition.ID] = fpValue(value, 1)
+		}
+		return Fingerprint{SchemaVersion: 1, Values: values}
+	}
+	query := fullFingerprint(90)
 	structurallyNear := query
-	semanticallyNear := Fingerprint{SchemaVersion: 1, Values: map[string]AttributeValue{
-		"state_uncertainty":             fpValue(10, 1),
-		"future_option_foreclosure":     fpValue(10, 1),
-		"optionality_priority":          fpValue(10, 1),
-		"reversibility_priority":        fpValue(10, 1),
-		"precommitment_learning_extent": fpValue(0, 1),
-		"retained_option_extent":        fpValue(0, 1),
-	}}
+	semanticallyNear := fullFingerprint(10)
 	lowCoverage := Fingerprint{SchemaVersion: 1, Values: map[string]AttributeValue{
 		"optionality_priority": fpValue(100, 1),
 	}}
