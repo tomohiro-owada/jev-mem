@@ -37,6 +37,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return runSearch(args[1:], stdin, stdout)
 	case "search-analogies":
 		return runSearchAnalogies(args[1:], stdin, stdout)
+	case "render-report":
+		return runRenderReport(args[1:], stdin, stdout)
 	case "retry-push":
 		return runRetryPush(args[1:], stdout)
 	case "sync":
@@ -454,6 +456,42 @@ func runSearchAnalogies(args []string, stdin io.Reader, stdout io.Writer) error 
 	return writeResponse(stdout, opts["output"], response)
 }
 
+func runRenderReport(args []string, stdin io.Reader, stdout io.Writer) error {
+	opts, rest, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 || opts["input"] != "json" {
+		return fmt.Errorf("render-report requires --input json and no positional arguments")
+	}
+	if output := opts["output"]; output != "" && output != "html" {
+		return fmt.Errorf("render-report only supports --output html")
+	}
+	var response jevmem.Response[jevmem.AnalogSearchData]
+	if err := json.NewDecoder(stdin).Decode(&response); err != nil {
+		return err
+	}
+	if !response.OK {
+		return fmt.Errorf("cannot render an unsuccessful search response")
+	}
+	html, err := jevmem.RenderAnalogSearchHTML(response.Data, time.Now())
+	if err != nil {
+		return err
+	}
+	if reportPath := strings.TrimSpace(opts["file"]); reportPath != "" {
+		reportPath, err = filepath.Abs(reportPath)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(reportPath, []byte(html), 0o644)
+	}
+	_, err = io.WriteString(stdout, html)
+	return err
+}
+
 func runRetryPush(args []string, stdout io.Writer) error {
 	opts, _, err := parseArgs(args)
 	if err != nil {
@@ -666,6 +704,7 @@ func schema() map[string]any {
 			"search":                map[string]any{"output": []string{"json", "ndjson", "text"}},
 			"save-decision":         map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}},
 			"search-analogies":      map[string]any{"input": []string{"json"}, "output": []string{"json", "text"}, "options": []string{"html-report"}},
+			"render-report":         map[string]any{"input": []string{"json"}, "output": []string{"html"}, "options": []string{"file"}},
 			"sync":                  map[string]any{"output": []string{"json", "text"}},
 			"status":                map[string]any{"output": []string{"json", "text"}},
 			"retry-push":            map[string]any{"output": []string{"json", "text"}},

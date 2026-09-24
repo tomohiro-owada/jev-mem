@@ -325,9 +325,9 @@ jev-mem search-analogies --input json --output json <<'JSON' > search-result.jso
 JSON
 ```
 
-### 10×10 HTML report
+### Decision Atlas HTML report
 
-`search-analogies`へ`--html-report`を指定すると、通常のJSON結果に加えてself-contained HTMLを生成します。queryと各検索結果の100属性を同じ10×10配置で、combined similarity順に表示します。
+`search-analogies`へ`--html-report`を指定すると、通常のJSON結果に加えてself-contained HTMLを生成します。検索結果はcombined similarity順です。レポートには、今回の判断と上位最大12件を相互比較した属性類似度マトリクス、各Decisionの10×10属性マップ、今回との属性差分マップを表示します。マトリクスと差分マップは実際の保存済み属性値から計算します。
 
 ```bash
 jev-mem search-analogies \
@@ -338,7 +338,16 @@ jev-mem search-analogies \
   < query.json > search-result.json
 ```
 
-各resultにはcombined / fingerprint / confidence-adjusted fingerprint / semantic score、近い属性、異なる属性、Decision本文を表示します。セルへpointerを合わせると属性番号、名称、ID、値を確認できます。HTML上のマップは可視化であり、検索計算は保存された属性値に対して行われます。
+各resultにはcombined / fingerprint / confidence-adjusted fingerprint / semantic scoreに加え、共通して強い属性（両方60以上・差20以内）、値が最も近い属性、差が大きい属性を、日本語の属性名と両者の実値付きで表示します。coverageと実効confidenceも確認できます。セルへpointerを合わせると属性番号、名称、ID、値を確認できます。
+
+マトリクスは`CompareFingerprints`による補正前の属性類似度です。一方、検索順位はsemantic scoreとconfidence・coverage補正後のfingerprint scoreを組み合わせたcombined scoreで決まるため、マトリクスの色順と検索順位が一致しない場合があります。10×10配置は可視化であり、画像ピクセルの類似度で検索しているわけではありません。
+
+保存済みの検索JSONから、モデルを再実行せずにレポートだけを再生成することもできます。
+
+```bash
+jev-mem render-report --input json --output html \
+  --file ./decision-report.html < search-result.json
+```
 
 `all: true`は全projectを横断します。特定projectだけを検索する場合は、`all`を省略して`current_workspace_path`を渡します。
 
