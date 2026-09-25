@@ -59,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return json.NewEncoder(stdout).Encode(schema())
 	case "mcp":
 		return runMCP(args[1:], stdin, stdout)
+	case "http":
+		return runHTTP(args[1:])
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
@@ -598,7 +600,7 @@ type rpcResponse struct {
 func handleRPC(svc *jevmem.Service, req rpcRequest) rpcResponse {
 	switch req.Method {
 	case "initialize":
-		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "jev-mem", "version": "0.1.0"}, "capabilities": map[string]any{"tools": map[string]any{}}}}
+		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"protocolVersion": negotiateProtocolVersion(req.Params), "serverInfo": map[string]any{"name": "jev-mem", "version": "0.1.0"}, "capabilities": map[string]any{"tools": map[string]any{}}}}
 	case "tools/list":
 		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"tools": mcpTools()}}
 	case "tools/call":
@@ -609,6 +611,27 @@ func handleRPC(svc *jevmem.Service, req rpcRequest) rpcResponse {
 		}
 		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: map[string]any{"code": -32601, "message": "method not found"}}
 	}
+}
+
+// supportedProtocolVersions lists the MCP revisions this server speaks, newest
+// first. Streamable HTTP was introduced in 2025-03-26, so the stdio-era
+// 2024-11-05 alone is not enough once the HTTP transport is in play.
+var supportedProtocolVersions = []string{"2025-06-18", "2025-03-26", "2024-11-05"}
+
+// negotiateProtocolVersion echoes the client's requested revision when this
+// server supports it, and otherwise answers with the newest one it speaks.
+func negotiateProtocolVersion(raw json.RawMessage) string {
+	var in struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(raw, &in); err == nil {
+		for _, v := range supportedProtocolVersions {
+			if in.ProtocolVersion == v {
+				return v
+			}
+		}
+	}
+	return supportedProtocolVersions[0]
 }
 
 func callTool(svc *jevmem.Service, raw json.RawMessage) any {
